@@ -1686,6 +1686,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
 interface EditRoomProps {
   /** 말로 시키는 일괄 변경이 어느 작업 공간의 사용량으로 잡히는지. */
   workspaceId?: string;
+  /** 운영자 전용 전역 음성 설정 조회 허용 여부. */
+  voiceOptionsEnabled?: boolean;
   lines: string[];
   onLinesChange: (lines: string[]) => void;
   kind?: EditContentKind;
@@ -2034,6 +2036,7 @@ function TextDocumentEditor({ lines, segments, onLinesChange, onSegmentsChange }
 
 export function EditRoom({
   workspaceId,
+  voiceOptionsEnabled = false,
   lines,
   onLinesChange,
   kind = "video",
@@ -2468,6 +2471,7 @@ export function EditRoom({
                         sourceFilename={videoSourceFilename}
                         previewContainsBakedText={previewContainsBakedText}
                         tenantId={workspaceId}
+                        voiceOptionsEnabled={voiceOptionsEnabled}
                       />
                     </>
                   ) : kind === "card" ? (

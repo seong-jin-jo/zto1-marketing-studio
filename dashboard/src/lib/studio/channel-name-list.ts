@@ -24,9 +24,15 @@ export const PLATFORM_LABEL: Record<PreviewPlatform, string> = {
   x: "X",
   facebook: "Facebook",
   instagram: "Instagram",
+  linkedin: "LinkedIn",
+  bluesky: "Bluesky",
+  telegram: "Telegram",
+  discord: "Discord",
+  slack: "Slack",
   shorts: "Shorts",
   reels: "Reels",
   tiktok: "TikTok",
+  kakao: "KakaoTalk",
 };
 
 export function channelNameList(platforms: readonly PreviewPlatform[]): string {

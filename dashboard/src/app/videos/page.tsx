@@ -168,8 +168,14 @@ export default function VideosPage() {
   const videos = data?.videos || [];
   const youtubeAccounts = ytAccountsData?.accounts || [];
   const tiktokAccounts = tiktokAccountsData?.accounts || [];
-  const tiktokCreatorUrl = tiktokAccounts.length > 0
-    ? `/api/tiktok/creator-info${tiktokAccountId ? `?account_id=${encodeURIComponent(tiktokAccountId)}` : ""}`
+  const tiktokCreatorParams = activeWorkspace
+    ? new URLSearchParams({
+        tenant_id: activeWorkspace.id,
+        ...(tiktokAccountId ? { account_id: tiktokAccountId } : {}),
+      })
+    : null;
+  const tiktokCreatorUrl = tiktokAccounts.length > 0 && tiktokCreatorParams
+    ? `/api/tiktok/creator-info?${tiktokCreatorParams.toString()}`
     : null;
   const { data: tiktokCreatorData } = useSWR<{
     ready: boolean;

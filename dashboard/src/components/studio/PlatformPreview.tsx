@@ -14,7 +14,7 @@ export interface PreviewText {
   shorts?: { hook?: string; body?: string; cta?: string };
 }
 export interface PreviewMedia { imgUrl?: string; imgUrls?: string[]; vidUrl?: string }
-export type PreviewPlatform = "threads" | "x" | "instagram" | "facebook" | "shorts" | "reels" | "tiktok";
+export type PreviewPlatform = "threads" | "x" | "instagram" | "facebook" | "linkedin" | "bluesky" | "telegram" | "discord" | "slack" | "shorts" | "reels" | "tiktok" | "kakao";
 
 export type PreviewAccount = {
   status: "loading" | "connected" | "missing" | "error" | "unsupported";
@@ -41,7 +41,10 @@ export interface PreviewInlineEditor {
 export const PREVIEW_PLATFORMS: { key: PreviewPlatform; label: string }[] = [
   { key: "threads", label: "Threads" }, { key: "x", label: "X" },
   { key: "instagram", label: "Instagram" }, { key: "facebook", label: "Facebook" },
+  { key: "linkedin", label: "LinkedIn" }, { key: "bluesky", label: "Bluesky" },
+  { key: "telegram", label: "Telegram" }, { key: "discord", label: "Discord" }, { key: "slack", label: "Slack" },
   { key: "shorts", label: "Shorts" }, { key: "reels", label: "Reels" }, { key: "tiktok", label: "TikTok" },
+  { key: "kakao", label: "KakaoTalk" },
 ];
 
 // 모든 플랫폼 미리보기 가로폭 통일. 높이는 콘텐츠와 비율대로 두어 잘림을 막는다.
@@ -51,8 +54,13 @@ export function Logo({ p }: { p: PreviewPlatform }) {
   if (p === "x") return <svg className={c} viewBox="0 0 24 24" fill="currentColor"><path d="M18.9 1.2h3.7l-8 9.1L24 22.8h-7.4l-5.8-7.6-6.6 7.6H.5l8.6-9.8L0 1.2h7.6l5.2 6.9zM17.6 20.6h2L6.5 3.3H4.3z"/></svg>;
   if (p === "facebook") return <svg className={c} viewBox="0 0 24 24" fill="currentColor"><path d="M24 12a12 12 0 10-13.9 11.9v-8.4H7v-3.5h3.1V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9v2.2h3.4l-.5 3.5h-2.9v8.4A12 12 0 0024 12z"/></svg>;
   if (p === "instagram") return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="6"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1.3" fill="currentColor" stroke="none"/></svg>;
+  if (p === "linkedin" || p === "bluesky" || p === "telegram" || p === "discord" || p === "slack") {
+    const initials: Record<string, string> = { linkedin: "in", bluesky: "B", telegram: "T", discord: "D", slack: "S" };
+    return <span aria-hidden="true" className="grid h-5 w-5 place-items-center rounded-control bg-accent text-caption font-bold text-accent-fg">{initials[p]}</span>;
+  }
   if (p === "shorts") return <svg className={c} viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="5" fill="currentColor"/><path d="M10 8.5l5 3.5-5 3.5z" fill="var(--accent-fg)"/></svg>;
   if (p === "reels") return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M3 8h18M8 3l2 5M13 3l2 5"/><path d="M10 11.5l4 2.5-4 2.5z" fill="currentColor" stroke="none"/></svg>;
+  if (p === "kakao") return <svg className={c} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3C6.5 3 2 6.5 2 10.9c0 2.8 1.8 5.3 4.6 6.7l-1.1 3.8 4.4-2.5c.7.1 1.4.2 2.1.2 5.5 0 10-3.6 10-8.1C22 6.5 17.5 3 12 3z"/></svg>;
   return <svg className={c} viewBox="0 0 24 24" fill="currentColor"><path d="M16 3c.3 2.3 1.8 4.1 4 4.4v3c-1.5 0-2.9-.4-4.1-1.2v6.1a5.7 5.7 0 11-5.7-5.7c.3 0 .6 0 .9.1v3.1a2.7 2.7 0 102 2.6V3z"/></svg>;
 }
 
@@ -165,7 +173,7 @@ function Counter({ validation, field }: { validation: PlatformPublishValidation;
  * 경우)에만 화면을 맞춘다.
  */
 // 미리보기 안에서 본문을 직접 고치는 형식. 이 목록에 있으면 아래 캡션 칸을 두지 않는다.
-const BODY_EDITABLE_IN_PREVIEW = new Set<PreviewPlatform>(["threads", "x", "facebook", "instagram"]);
+const BODY_EDITABLE_IN_PREVIEW = new Set<PreviewPlatform>(["threads", "x", "facebook", "instagram", "linkedin", "bluesky", "telegram", "discord", "slack"]);
 // 첫 댓글을 미리보기 답글 자리에서 고치는 형식. 나머지는 아래 칸이 유일한 입구다.
 const FIRST_COMMENT_IN_PREVIEW = new Set<PreviewPlatform>(["threads"]);
 
@@ -423,7 +431,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
         ? text.x || ""
         : platform === "instagram"
           ? text.instagram?.caption || ""
-          : "";
+          : text.threads || text.facebook || text.x || "";
   const validation = editor ? validatePlatformPublish(platform, { title: editor.title, body: editor.caption, hashtags: editor.hashtags, topicTag: editor.topicTag }) : null;
   const bodyCounter = validation?.counters.body;
   /*
@@ -577,6 +585,46 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
       </Frame>
     );
   }
+  if (platform === "linkedin" || platform === "bluesky" || platform === "telegram" || platform === "discord" || platform === "slack") {
+    const isMessage = platform === "telegram" || platform === "discord" || platform === "slack";
+    return (
+      <Frame p={platform} label={label} headerRight={headerRight} characterCount={characterCount}>
+        <div className={`rounded-surface border border-border p-stack ${isMessage ? "bg-surface-2" : "bg-surface"}`}>
+          <div className="flex items-center gap-stack-tight">
+            <Av s={32} />
+            <div className="min-w-0 flex-1">
+              <b className="block truncate text-body-sm">{previewIdentity}</b>
+              <span className="text-caption text-subtle">발행 전 미리보기</span>
+            </div>
+          </div>
+          <EditablePreviewBody
+            value={editor?.caption || previewBody}
+            onChange={editor?.onCaptionChange}
+            testId={`preview-body-${platform}`}
+            label={`${label} ${isMessage ? "메시지" : "게시물 본문"}`}
+            locked={editor?.account.status === "loading"}
+            placeholder={isMessage ? "보낼 메시지를 적으세요" : "게시물 본문을 적으세요"}
+            className="mt-stack whitespace-pre-wrap text-body leading-snug"
+          />
+          {img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId={`preview-media-${platform}`} className="mt-stack max-h-80 w-full rounded-control object-cover" /> : null}
+          {vid ? <DeliveredMedia type="video" src={vid} tenantId={tenantId} preload="none" testId={`preview-video-${platform}`} className="mt-stack max-h-80 w-full rounded-control object-cover" /> : null}
+        </div>
+        {editor ? <PublishMetaFields platform={platform} editor={editor} /> : null}
+      </Frame>
+    );
+  }
+  if (platform === "kakao") return (
+    <Frame p="kakao" label="KakaoTalk" headerRight={headerRight} characterCount={characterCount}>
+      <div className="rounded-surface border border-border bg-chat-sky p-stack">
+        <div className="ml-auto max-w-[85%] rounded-control bg-chat-reader-bg p-stack text-text shadow-sm">
+          <EditablePreviewBody value={editor?.caption || text.threads || ""} onChange={editor?.onCaptionChange} testId="preview-body-kakao" label="KakaoTalk 메시지" locked={editor?.account.status === "loading"} placeholder="보낼 메시지를 적으세요" className="whitespace-pre-wrap text-body leading-snug" />
+          {img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId="preview-media-kakao" className="mt-stack-tight max-h-80 w-full rounded-control object-cover" /> : null}
+          {vid ? <DeliveredMedia type="video" src={vid} tenantId={tenantId} preload="none" testId="preview-video-kakao" className="mt-stack-tight max-h-80 w-full rounded-control object-cover" /> : null}
+        </div>
+      </div>
+      {editor ? <PublishMetaFields platform="kakao" editor={editor} /> : null}
+    </Frame>
+  );
   // 세로영상
   const k = platform as "shorts" | "reels" | "tiktok";
   const cap = editor?.caption || text.shorts?.hook || text.instagram?.caption || "";
@@ -588,7 +636,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
           재생 전까지 검정 상자만 보였다. 덱 커버나 첫 이미지를 대문으로 넘기고, 그마저
           없으면 "썸네일 없음" 을 글로 밝힌다(ADR-007, 조용히 빈 상자로 두지 않는다).
         */}
-        {vid ? <DeliveredMedia key={vid} type="video" src={vid} tenantId={tenantId} preload="metadata" poster={img} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
+        {vid ? <DeliveredMedia key={vid} type="video" src={vid} tenantId={tenantId} preload="none" poster={img} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : <div className="w-full h-full grid place-items-center text-subtle text-caption" data-testid={`preview-media-${k}-empty`}>영상 생성 대기 · 썸네일 없음</div>}
         {/*

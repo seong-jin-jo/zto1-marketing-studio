@@ -157,7 +157,7 @@ const CHANNEL_GROUP_DEFINITIONS = [
   {
     key: "messaging",
     title: "메시지",
-    channels: ["telegram", "discord", "slack"],
+    channels: ["telegram", "discord", "slack", "kakao"],
     studioPublish: true,
   },
   {

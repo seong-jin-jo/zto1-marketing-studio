@@ -1639,6 +1639,38 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
   }
 }
 
+// KakaoTalk 메시지 API의 나에게 보내기. OSMU의 연결 계정이 소유한 나와의 채팅으로만
+// 보낸다. 임의 수신자나 친구 식별자를 받지 않아 권한 범위를 화면보다 넓히지 않는다.
+export async function publishKakao(cred: ChannelCred, text: string, imageUrl?: string): Promise<PublishResult> {
+  if (!cred.token) return { ok: false, error: "KakaoTalk 채널 토큰이 없습니다. 채널을 다시 연결해주세요." };
+  if ([...text].length > 200) return { ok: false, error: "KakaoTalk 텍스트 템플릿은 최대 200자입니다." };
+  const linkUrl = imageUrl || process.env.OSMU_PUBLIC_URL || "https://developers.kakao.com";
+  const template = {
+    object_type: "text",
+    text,
+    link: { web_url: linkUrl, mobile_web_url: linkUrl },
+    button_title: imageUrl ? "이미지 보기" : "내용 보기",
+  };
+  try {
+    const response = await fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cred.token}`,
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+      },
+      body: new URLSearchParams({ template_object: JSON.stringify(template) }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return { ok: false, error: `KakaoTalk 메시지 발송 실패(${response.status})` };
+    const body = await response.json().catch(() => ({})) as { result_code?: number };
+    return body.result_code === 0
+      ? { ok: true, externalId: `kakao-self-${Date.now()}` }
+      : { ok: false, error: "KakaoTalk 메시지 발송 결과를 확인하지 못했습니다." };
+  } catch {
+    return { ok: false, error: "KakaoTalk 메시지 발송 결과를 확인하지 못했습니다.", failureKind: "indeterminate" };
+  }
+}
+
 /**
  * LinkedIn 회원 게시.
  *

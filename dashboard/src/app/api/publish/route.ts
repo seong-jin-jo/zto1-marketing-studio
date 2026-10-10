@@ -33,6 +33,7 @@ import {
   publishTelegram,
   publishDiscord,
   publishSlack,
+  publishKakao,
   type PublishResult,
 } from "@/lib/publish";
 import { PUBLISH_IMAGE_LIMIT, channelImageCapacity } from "@/lib/studio/channel-image-capacity";
@@ -47,6 +48,9 @@ import {
   type PlatformPublishInput,
   type PublishPlatform,
 } from "@/lib/studio/platform-publish-fields";
+import { isPublishDryRunEnabled, recordTextPublishDryRun } from "@/lib/publish-dry-run";
+import { verifyMediaToken } from "@/lib/media-token";
+import { resolveGeneratedFile } from "@/lib/storage";
 
 type PersistenceStage = RecoveryStage;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -278,7 +282,7 @@ export async function POST(request: Request) {
     if (response) return response;
     throw error;
   }
-  const fieldPlatforms = new Set<PublishPlatform>(["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"]);
+  const fieldPlatforms = new Set<PublishPlatform>(["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok", "kakao"]);
   const rawFields = __b.publish_fields;
   if (rawFields !== undefined && (!rawFields || typeof rawFields !== "object" || Array.isArray(rawFields))) {
     return Response.json({
@@ -336,6 +340,7 @@ export async function POST(request: Request) {
 
   let publishImageUrl: string | undefined;
   let publishImageUrls: string[] | undefined;
+  let publishImagePaths: string[] | undefined;
   if (image_urls !== undefined && (!Array.isArray(image_urls)
     || image_urls.length < 1
     || image_urls.length > PUBLISH_IMAGE_LIMIT
@@ -362,7 +367,20 @@ export async function POST(request: Request) {
   }
   if (requestedImages.length > 0) {
     publishImageUrls = [];
+    publishImagePaths = [];
     for (const requestedImage of requestedImages) {
+      if (isPublishDryRunEnabled() && requestedImage.startsWith("/api/media/")) {
+        const token = requestedImage.slice("/api/media/".length);
+        const claim = verifyMediaToken(token);
+        const localPath = claim?.tenantId === tenant_id ? resolveGeneratedFile(tenant_id, claim.filename) : null;
+        if (!claim || !localPath) {
+          return Response.json({ ok: false, error: "로컬 이미지 URL이 만료되었거나 유효하지 않습니다." }, { status: 400 });
+        }
+        const origin = process.env.OSMU_PUBLIC_URL?.replace(/\/+$/, "") || "http://127.0.0.1:3483";
+        publishImageUrls.push(`${origin}${requestedImage}`);
+        publishImagePaths.push(localPath);
+        continue;
+      }
       const refreshed = refreshImageDeliveryUrl(tenant_id, requestedImage);
       if (!refreshed) {
         return Response.json({ ok: false, error: "이미지 URL이 만료되었거나 유효하지 않습니다. 이미지를 다시 선택해주세요." }, { status: 400 });
@@ -727,7 +745,15 @@ export async function POST(request: Request) {
 
   let result: PublishResult;
   try {
-  if (platform === "threads") {
+  if (isPublishDryRunEnabled()) {
+    result = recordTextPublishDryRun({
+      tenantId: tenant_id,
+      platform,
+      text: text || "",
+      imageUrls: publishImageUrls ?? (publishImageUrl ? [publishImageUrl] : []),
+      imagePaths: publishImagePaths,
+    });
+  } else if (platform === "threads") {
     result = await publishThreads(cred, text || "", publishImageUrl, undefined, publishFields.topicTag);
   } else if (platform === "instagram") {
     result = await publishInstagram(cred, text || "", publishImageUrls, {
@@ -762,6 +788,8 @@ export async function POST(request: Request) {
     result = await publishLinkedIn(cred, text || "");
   } else if (platform === "slack") {
     result = await publishSlack(cred, text || "", publishImageUrl);
+  } else if (platform === "kakao") {
+    result = await publishKakao(cred, text || "", publishImageUrl);
   } else {
     result = { ok: false, error: `${platform} 미지원` };
   }

@@ -43,7 +43,7 @@ export const SCHEDULABLE_PLATFORMS = [
   "threads", "x", "facebook", "instagram",
   // 2026-09-08: 링크드인 텍스트 발행을 구현해 /api/publish 가 분기 처리한다.
   "linkedin",
-  "bluesky", "telegram", "discord", "slack",
+  "bluesky", "telegram", "discord", "slack", "kakao",
 ] as const;
 export type SchedulablePlatform = (typeof SCHEDULABLE_PLATFORMS)[number];
 
@@ -68,6 +68,7 @@ export const SCHEDULABLE_PLATFORM_LABELS: Record<SchedulablePlatform, string> = 
   telegram: "Telegram",
   discord: "Discord",
   slack: "Slack",
+  kakao: "KakaoTalk",
 };
 
 /** Messaging channels — no Content Guide/Keywords */

@@ -46,6 +46,18 @@ describe("S3 내보내기 source hash 계약", () => {
     expect(source.edit.comments[0]).toMatchObject({ startSec: 2.4, endSec: 3.4 });
   });
 
+  it("S4-LOCAL-01 정상: 편집 조작이 없는 생성 영상도 빈 편집 계약과 실제 대본으로 내보낸다", () => {
+    const source = videoExportSource({
+      videoEdit: emptyVideoEdit(),
+      vid: { filename: "vid_1791634673480.mp4", subtitlesBaked: false, subtitleLineageState: "unbaked" },
+      editLines: ["첫 장면", "두 번째 장면"],
+      editFormat: { subtitleSize: "보통" },
+    }, "tenant-local");
+    expect(source.sourceFilename).toBe("vid_1791634673480.mp4");
+    expect(source.lines).toEqual(["첫 장면", "두 번째 장면"]);
+    expect(source.sourceRevision).toBe(0);
+  });
+
   it("S6-MAJOR3-01 거절: 자막이 이미 구운 영상인데 글자 없는 원본 계보가 없으면 다시 굽지 않는다", () => {
     expect(() => videoExportSource({
       videoEdit: emptyVideoEdit(),

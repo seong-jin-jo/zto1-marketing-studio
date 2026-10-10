@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ dra
     const result = await exportRepository().create(
       tenantId,
       draftId,
-      await exportMemberId(request),
+      await exportMemberId(request, tenantId),
       parseIdempotencyKey(request),
       exportRequestHash(input),
       input,

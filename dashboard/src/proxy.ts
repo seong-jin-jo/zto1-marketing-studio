@@ -345,6 +345,11 @@ export async function proxy(request: NextRequest) {
   // 라우트 핸들러(app/api/images/deliver/[token]/route.ts)의 verifyImageToken이 담당한다.
   if (request.nextUrl.pathname.startsWith("/api/images/deliver/")) return NextResponse.next();
 
+  // S6 내보내기 영상도 브라우저 <video>와 외부 플랫폼 서버가 Authorization 헤더 없이
+  // 가져간다. 경로 자체를 공개하는 대신 Route Handler가 verifyImageToken으로 테넌트,
+  // 파일명, 만료를 검증하므로 /api/media와 같은 인증 경계를 적용한다.
+  if (request.nextUrl.pathname.startsWith("/api/exports/deliver/")) return NextResponse.next();
+
   // 고객 로그인 진입점. Google OAuth는 provider disabled raw JSON을 막기 위해 앱 서버에서 preflight한다.
   if (request.nextUrl.pathname === "/api/auth/google") return NextResponse.next();
 

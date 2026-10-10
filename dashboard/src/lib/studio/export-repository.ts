@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db, withTenant } from "@/lib/db";
 import { CardDeckV3ValidationError, type CardDeckV3 } from "./card-element-contract";
+import { VideoEditValidationError } from "./video-edit-contract";
 import {
   ExportQueueError,
   type ClaimedExportItem,
@@ -84,6 +85,9 @@ function sourceFromDraft(row: { payload?: unknown } | undefined, kind: ExportKin
     }
     if (error instanceof CardDeckV3ValidationError && error.code === "CARD_DECK_TOO_LARGE") {
       throw new ExportQueueError(413, error.code, error.message);
+    }
+    if (error instanceof VideoEditValidationError) {
+      throw new ExportQueueError(400, "INVALID_VIDEO_EDIT", "영상 편집 데이터가 올바르지 않습니다");
     }
     throw new ExportQueueError(400, "INVALID_EXPORT_REQUEST", "내보낼 카드 덱이 올바르지 않습니다");
   }

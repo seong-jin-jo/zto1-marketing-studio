@@ -107,6 +107,13 @@ describe("proxy 토큰 검증 분기", () => {
     const req = new NextRequest("http://localhost/api/auth/google");
     expect(isPass(await proxy(req))).toBe(true);
   });
+
+  it("S4-LOCAL-07 서명된 내보내기 영상 배달은 video 태그가 인증 헤더 없이 읽을 수 있다", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DASHBOARD_AUTH_TOKEN", "secret-abc");
+    const req = new NextRequest("http://localhost/api/exports/deliver/signed-export-token");
+    expect(isPass(await proxy(req))).toBe(true);
+  });
 });
 
 describe("proxy Studio 독립 인증 경계", () => {

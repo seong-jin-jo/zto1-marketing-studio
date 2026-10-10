@@ -58,7 +58,7 @@ import { cardTemplateStatePatchForSave, defaultCardTemplateState, type CardDeckT
 import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
 import { textCandidateLines, textCandidateSelectionWouldDiscardEdits } from "@/lib/studio/text-candidate-selection";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
-import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import { emptyVideoEdit, videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
@@ -184,10 +184,12 @@ function draftLandingRoom(draft: Record<string, unknown>): StudioRoom {
 }
 
 function draftPreviewMedia(draft: Record<string, unknown>): { type: "image" | "video"; src: string } | null {
-  const videoSrc = draftVideoSource(draft);
-  if (videoSrc) return { type: "video", src: videoSrc };
+  // 이미지와 영상이 함께 있는 생성 결과는 정지 이미지를 목록 썸네일로 쓴다. preload="none"
+  // 영상은 첫 프레임을 받지 않아 검은 칸으로 보였고, 실제 생성 결과가 없는 것처럼 보였다.
   const imageSrc = draftImageSource(draft);
-  return imageSrc ? { type: "image", src: imageSrc } : null;
+  if (imageSrc) return { type: "image", src: imageSrc };
+  const videoSrc = draftVideoSource(draft);
+  return videoSrc ? { type: "video", src: videoSrc } : null;
 }
 
 // 채널 화면 주소는 제공자 이름으로 만든다.
@@ -381,9 +383,10 @@ function studioWorkStorageKey(workspaceId: string): string {
 }
 
 const GROUPS: { title: string; platforms: PreviewPlatform[] }[] = [
-  { title: "텍스트", platforms: ["threads", "x", "facebook"] },
+  { title: "텍스트", platforms: ["threads", "x", "facebook", "linkedin", "bluesky"] },
   { title: "세로 영상", platforms: ["shorts", "reels", "tiktok"] },
   { title: "카드뉴스", platforms: ["instagram"] },
+  { title: "메시지", platforms: ["telegram", "discord", "slack", "kakao"] },
 ];
 const ALL: PreviewPlatform[] = PREVIEW_PLATFORMS.map((platform) => platform.key);
 
@@ -409,6 +412,9 @@ const POST_URL: Record<string, string> = {
   threads: "https://www.threads.net", x: "https://x.com", facebook: "https://www.facebook.com",
   instagram: "https://www.instagram.com", shorts: "https://www.youtube.com/shorts",
   reels: "https://www.instagram.com/reels", tiktok: "https://www.tiktok.com",
+  linkedin: "https://www.linkedin.com", bluesky: "https://bsky.app",
+  telegram: "https://web.telegram.org", discord: "https://discord.com/channels/@me", slack: "https://app.slack.com",
+  kakao: "https://talk.kakao.com",
 };
 const isVideo = (p: PreviewPlatform) => p === "shorts" || p === "reels" || p === "tiktok";
 
@@ -937,8 +943,14 @@ export default function StudioPage() {
   // 읽으므로, publishGuard를 처음 부르는 selectedTargets 계산보다 반드시 앞에 있어야
   // 한다(TDZ — "Cannot access before initialization"로 전체 화면이 죽은 실측).
   const tiktokAccountIdForCreator = selectedConnectedAccountId("tiktok");
-  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0
-    ? `/api/tiktok/creator-info${tiktokAccountIdForCreator ? `?account_id=${encodeURIComponent(tiktokAccountIdForCreator)}` : ""}`
+  const tiktokCreatorParams = activeWorkspace
+    ? new URLSearchParams({
+        tenant_id: activeWorkspace.id,
+        ...(tiktokAccountIdForCreator ? { account_id: tiktokAccountIdForCreator } : {}),
+      })
+    : null;
+  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0 && tiktokCreatorParams
+    ? `/api/tiktok/creator-info?${tiktokCreatorParams.toString()}`
     : null;
   const { data: tiktokCreatorData, error: tiktokCreatorError } = useSWR<{
     connected?: boolean;
@@ -1066,7 +1078,11 @@ export default function StudioPage() {
           try {
             const res = await fetch(`/api/channels/${provider}/accounts?tenant_id=${activeWorkspace.id}`, {
               headers: authHeaders(),
-              signal: AbortSignal.timeout(10_000),
+              // 발행실은 미리보기 영상 여러 개와 계정 조회를 동시에 시작한다. 브라우저의
+              // 호스트별 연결 큐에서 뒤쪽 채널이 10초 넘게 대기하면 요청을 보내기도 전에
+              // 취소돼 TikTok 공개 범위처럼 필수 UI가 영원히 사라졌다. 네트워크 실패는
+              // 계속 제한하되, 실제 요청이 큐를 빠져나올 시간을 보장한다.
+              signal: AbortSignal.timeout(60_000),
             });
             const data = await res.json().catch(() => ({}));
             return { ok: res.ok, data: data as { accounts?: ChannelAccountRaw[] } };
@@ -2505,7 +2521,7 @@ export default function StudioPage() {
     // compositeDeliverUrl 대용으로 쓰면 안 된다.
     const source = resolveUnbakedVideoSource({
       currentFilename: currentResultFilename,
-      currentUrl: vid?.url || vid?.file || "",
+      currentUrl: vid?.file || vid?.url || "",
       lineage: {
         subtitlesBaked: vid?.subtitlesBaked,
         state: vid?.subtitleLineageState
@@ -2618,13 +2634,17 @@ export default function StudioPage() {
       if (editKind === "card" && !cardDeckV3 && !redrawn) return;
       let subtitled: SubtitleBurnOutcome = { kind: "skipped" };
       if (editKind === "video") {
+        // 편집 조작을 한 번도 하지 않은 영상도 화면에는 EMPTY_VIDEO_EDIT으로 보이지만,
+        // 부모 state와 DB에는 아직 null이다. 같은 빈 계약을 저장하지 않고 export queue를
+        // 열면 생성→편집→발행 기본 경로가 null 계약 검증에서 끊긴다.
+        const videoEditForExport = videoEdit ?? emptyVideoEdit();
         // 영상 내보내기 대기열은 현재 source revision/hash를 기준으로 작업을 만든다.
         // 따라서 영상만 대기열 등록 전에 최신 편집 상태를 저장한다. 텍스트·카드는
         // 아래 공통 최종 저장만 수행해야 본문 revision이 사용자 저장 1회당 1번 오른다.
         if (!bodySnapshotRef.current.lines.length) replaceEditLines(linesToPersist);
         const queueDraftId = await save(
           "draft", publishReconciliations, draftId, redrawn ?? img, vid,
-          cardDeck ? pruneEmptyBubbles(cardDeck) : null, videoEdit, cardDeckV3,
+          cardDeck ? pruneEmptyBubbles(cardDeck) : null, videoEditForExport, cardDeckV3,
         );
         if (!queueDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
         subtitled = await burnVideoSubtitles(linesToPersist, queueDraftId);
@@ -2678,7 +2698,8 @@ export default function StudioPage() {
     if (p === "facebook") return text.facebook || "";
     if (p === "x") return text.x || "";
     if (p === "instagram") return text.instagram?.caption || "";
-    return "";
+    if (p === "kakao" || p === "linkedin" || p === "bluesky" || p === "telegram" || p === "discord" || p === "slack") return text.threads || text.facebook || text.x || deckFallbackBody;
+    return deckFallbackBody;
   }
 
   function platformPublishInput(p: PreviewPlatform): PlatformPublishInput {
@@ -3177,8 +3198,11 @@ export default function StudioPage() {
           text: publishText(p),
           // 채널이 몇 장까지 받는지는 채널 규격 한 자리에서 정한다(channel-image-capacity.ts).
           // 종전에는 인스타그램만 여러 장이었고 나머지는 대표 한 장으로 조용히 잘렸다.
-          image_url: planChannelImages(p, publishDeck).images[0] ?? img?.url,
-          image_urls: planChannelImages(p, publishDeck).images.length > 1
+          // 현재 LinkedIn 어댑터는 텍스트만 지원한다. 미리보기에서 실제 원본을 확인하더라도
+          // 발행 요청에 이미지를 실어 422로 전체 흐름을 끊지 않고, 규격 표에서 미지원으로
+          // 명시한다. 이미지 어댑터가 구현되기 전까지는 텍스트 게시만 보낸다.
+          image_url: p === "linkedin" ? undefined : (planChannelImages(p, publishDeck).images[0] ?? img?.url),
+          image_urls: p !== "linkedin" && planChannelImages(p, publishDeck).images.length > 1
             ? planChannelImages(p, publishDeck).images
             : undefined,
           draft_id: did,
@@ -4872,6 +4896,7 @@ export default function StudioPage() {
       {roomHeader}
       <EditRoom
         workspaceId={activeWorkspace?.id}
+        voiceOptionsEnabled={isOperator}
         state={activeWorkspace ? editRoomState : "default"}
         onRetry={() => { void mutateHist(); }}
         lines={resolvedEditLines}
@@ -5174,7 +5199,7 @@ export default function StudioPage() {
               <div className="min-w-0 flex-1">
                 <b className="text-body text-text">{pubResultLabel}</b>
                 <div className="mt-stack-tight flex flex-wrap gap-stack-tight">{Object.entries(pub.status).map(([key, status]) => {
-                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : status === "unknown" ? "border-border bg-surface-2 text-text" : "border-border bg-surface-2 text-subtle"}`;
+                  const cls = `inline-flex min-h-control-touch items-center rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : status === "unknown" ? "border-border bg-surface-2 text-text" : "border-border bg-surface-2 text-subtle"}`;
                   // 2026-09-16 실측(j.the.great.investor): "지금 발행"을 다시 누르면 서버가
                   // dedupe 로 옛 글을 돌려주는데, "완료" + "새 창" 링크만 보여 새로 올라간
                   // 것처럼 읽혔다. 이미 있던 것이면 그 사실과(있으면) 발행 시각을 말한다.
@@ -5188,7 +5213,7 @@ export default function StudioPage() {
                   return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{(status === "failed" || status === "unknown") && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
                 })}</div>
               </div>
-              {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
+              {hasPublishedResult ? <Link href="/performance" className="inline-flex min-h-control-touch shrink-0 items-center rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
             </div>
           ) : null}
           {showSchedule && activeWorkspace && !cardDeckV3PublishBlocked ? (
@@ -5381,7 +5406,7 @@ export default function StudioPage() {
                             aria-label="TikTok 공개 범위"
                             value={tiktokPrivacy}
                             onChange={(event) => setTiktokPrivacy(event.target.value)}
-                            className="mt-micro w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
+                            className="mt-micro min-h-control-touch w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
                           >
                             <option value="">선택</option>
                             {tiktokAllowedPrivacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
@@ -5395,6 +5420,7 @@ export default function StudioPage() {
                         <label>
                           <input
                             type="checkbox"
+                            className="h-control-touch w-control-touch align-middle"
                             aria-label="TikTok 댓글 끄기"
                             checked={tiktokDisableComment}
                             disabled={tiktokCreator.commentDisabled}
@@ -5404,6 +5430,7 @@ export default function StudioPage() {
                         <label>
                           <input
                             type="checkbox"
+                            className="h-control-touch w-control-touch align-middle"
                             aria-label="TikTok 듀엣 끄기"
                             checked={tiktokDisableDuet}
                             disabled={tiktokCreator.duetDisabled}
@@ -5413,6 +5440,7 @@ export default function StudioPage() {
                         <label>
                           <input
                             type="checkbox"
+                            className="h-control-touch w-control-touch align-middle"
                             aria-label="TikTok 스티치 끄기"
                             checked={tiktokDisableStitch}
                             disabled={tiktokCreator.stitchDisabled}
@@ -5422,6 +5450,7 @@ export default function StudioPage() {
                         <label>
                           <input
                             type="checkbox"
+                            className="h-control-touch w-control-touch align-middle"
                             aria-label="TikTok AI 생성 영상"
                             checked={tiktokAiGenerated}
                             onChange={(event) => setTiktokAiGenerated(event.target.checked)}
@@ -5435,6 +5464,7 @@ export default function StudioPage() {
                         <label className="col-span-2 border-t border-border pt-stack-tight text-text">
                           <input
                             type="checkbox"
+                            className="h-control-touch w-control-touch align-middle"
                             aria-label="TikTok 상업 콘텐츠 공개"
                             checked={tiktokDisclosureEnabled}
                             onChange={(event) => {
@@ -5449,6 +5479,7 @@ export default function StudioPage() {
                             <label>
                               <input
                                 type="checkbox"
+                                className="h-control-touch w-control-touch align-middle"
                                 aria-label="TikTok 내 브랜드 홍보"
                                 checked={tiktokBrandOrganic}
                                 onChange={(event) => setTiktokBrandOrganic(event.target.checked)}
@@ -5457,6 +5488,7 @@ export default function StudioPage() {
                             <label>
                               <input
                                 type="checkbox"
+                                className="h-control-touch w-control-touch align-middle"
                                 aria-label="TikTok 유료 파트너십"
                                 checked={tiktokBrandContent}
                                 onChange={(event) => setTiktokBrandContent(event.target.checked)}
