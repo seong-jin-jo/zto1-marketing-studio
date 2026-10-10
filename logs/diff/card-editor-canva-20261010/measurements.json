@@ -1,0 +1,80 @@
+{
+  "result": "PASS",
+  "runtime": {
+    "next": "http://localhost:3481",
+    "database": "PostgreSQL",
+    "routesMocked": 0,
+    "actualTenant": "78101010-1010-4010-8010-101010101010"
+  },
+  "selection": {
+    "handles": 8,
+    "move": true,
+    "shiftRatioResize": true,
+    "rotation": 60
+  },
+  "text": {
+    "inline": true,
+    "font": "Georgia",
+    "size": 70,
+    "bold": true,
+    "color": "#17324d",
+    "align": "center",
+    "background": "#fff2a8"
+  },
+  "assets": {
+    "generatedMedia": true,
+    "upload": true,
+    "shape": true,
+    "realPhotoStdev": 79.9012670777309
+  },
+  "commands": {
+    "duplicate": true,
+    "delete": true,
+    "layerBackward": true,
+    "layerForward": true,
+    "undo": true,
+    "redo": true,
+    "edgeSnapGuide": "--snap-position: 0%;",
+    "centerSnapGuide": "--snap-position: 50%;"
+  },
+  "pages": {
+    "before": 3,
+    "after": 4,
+    "reorder": true,
+    "bottomStripWithin900": true
+  },
+  "layout": {
+    "stageAssistantOverlap": false,
+    "mobileOverflow": {
+      "viewport": 390,
+      "scrollWidth": 390
+    }
+  },
+  "png": {
+    "editorPng": "/Users/sj/wt/zto1-card-editor-canva-20261010/logs/diff/card-editor-canva-20261010/card-editor-screen.png",
+    "exportPng": "/Users/sj/wt/zto1-card-editor-canva-20261010/logs/diff/card-editor-canva-20261010/card-editor-export.png",
+    "pixelDiff": {
+      "width": 1080,
+      "height": 1350,
+      "changedPixels": 22547,
+      "changedPixelRatio": 0.015464334705075446
+    }
+  },
+  "screenshots": [
+    "card-editor-1440x900.png",
+    "card-editor-390x844.png"
+  ],
+  "mobileErgonomics": {
+    "widths": [360, 390, 412, 600, 700, 780, 820, 900, 1000],
+    "allPass": true,
+    "fontBelow13Max": 0,
+    "bodyFontPx": 16,
+    "tapBelow44Max": 0,
+    "activeCoverageMin": 1,
+    "overflowCount": 0,
+    "raw": "mobile-ergonomics.jsonl"
+  },
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "persistedRevision": 9
+}

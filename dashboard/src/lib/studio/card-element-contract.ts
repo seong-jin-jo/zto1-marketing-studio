@@ -14,6 +14,7 @@ export const CARD_LOGICAL_WIDTH = 1080;
 export const CARD_LOGICAL_HEIGHT = { "4:5": 1350, "1:1": 1080 } as const;
 export const CARD_ELEMENT_TYPES = ["text", "image", "shape", "sticker", "logo"] as const;
 export const CARD_FONT_FAMILIES = ["Pretendard Variable", "Arial", "Georgia"] as const;
+export const CARD_TEXT_BACKGROUND_DEFAULT_COLOR = "#FFFFFF" as const;
 
 export type CardRatioV3 = keyof typeof CARD_LOGICAL_HEIGHT;
 export type CardElementType = (typeof CARD_ELEMENT_TYPES)[number];

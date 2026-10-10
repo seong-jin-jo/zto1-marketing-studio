@@ -1,5 +1,5 @@
 import { Button } from "@/components/shared/Button";
-import { CARD_FONT_FAMILIES, type CardElement, type TextElement } from "@/lib/studio/card-element-contract";
+import { CARD_FONT_FAMILIES, CARD_TEXT_BACKGROUND_DEFAULT_COLOR, type CardElement, type TextElement } from "@/lib/studio/card-element-contract";
 import type { LayerDirection } from "@/lib/studio/card-element-commands";
 import styles from "./CardCanvasEditor.module.css";
 
@@ -28,7 +28,7 @@ export function CardElementToolbar({
             onTextChange({ style: { font_size: Math.min(240, Math.max(8, Number(event.target.value))) } });
           }} /></label>
           <label className={styles.colorField}>색<input type="color" value={element.style.color.slice(0, 7)} aria-label="글자 색" onChange={(event) => onTextChange({ style: { color: event.target.value as `#${string}` } })} /></label>
-          <label className={styles.colorField}>배경<input type="color" value={(element.style.background_color === "transparent" ? "#FFFFFF" : element.style.background_color ?? "#FFFFFF").slice(0, 7)} aria-label="글 배경색" onChange={(event) => onTextChange({ style: { background_color: event.target.value as `#${string}` } })} /></label>
+          <label className={styles.colorField}>배경<input type="color" value={(element.style.background_color === "transparent" ? CARD_TEXT_BACKGROUND_DEFAULT_COLOR : element.style.background_color ?? CARD_TEXT_BACKGROUND_DEFAULT_COLOR).slice(0, 7)} aria-label="글 배경색" onChange={(event) => onTextChange({ style: { background_color: event.target.value as `#${string}` } })} /></label>
           <Button size="sm" aria-pressed={!element.style.background_color || element.style.background_color === "transparent"} onClick={() => onTextChange({ style: { background_color: "transparent" } })}>배경 없음</Button>
           <Button size="sm" aria-pressed={element.style.font_weight >= 700} onClick={() => onTextChange({ style: { font_weight: element.style.font_weight >= 700 ? 400 : 700 } })}>굵게</Button>
           {(["left", "center", "right"] as const).map((align) => {

@@ -408,13 +408,13 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current.slides[0].elements[0]).toMatchObject({ height: 4, rotation: 17 });
   });
 
-  it("S2-C-DIRECT-EDIT-01 실제 포인터 두 번째 클릭에서도 이동보다 직접 편집을 우선한다", () => {
+  it("S2-C-DIRECT-EDIT-01 브라우저가 이중 클릭으로 판정한 두 번째 누름에서 직접 편집을 연다", () => {
     const current = deck();
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
     const selection = screen.getByLabelText("제목 요소");
-    fireEvent.pointerDown(selection, { pointerId: 7 });
+    fireEvent.pointerDown(selection, { pointerId: 7, detail: 1 });
     fireEvent.pointerUp(window, { pointerId: 7 });
-    fireEvent.pointerDown(selection, { pointerId: 8 });
+    fireEvent.pointerDown(selection, { pointerId: 8, detail: 2 });
     expect(screen.getByLabelText("글 내용 직접 편집")).toBeInTheDocument();
   });
 
@@ -454,9 +454,8 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const selection = screen.getByLabelText("제목 요소");
     fireEvent.focus(selection);
     const toolbar = screen.getByRole("toolbar", { name: "제목 도구" });
-    const inspector = toolbar.closest("details");
+    const inspector = toolbar.closest("[data-card-element-inspector]");
     expect(inspector).toHaveAttribute("data-card-element-inspector");
-    expect(inspector).toHaveAttribute("open");
     expect(inspector?.parentElement).toHaveAttribute("data-card-stage-column");
     fireEvent.click(screen.getByRole("button", { name: /^삭제$/ }));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);

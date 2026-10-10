@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
@@ -338,7 +338,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
 
     render(<EditRoom workspaceId="tenant-s1" kind="card" lines={["첫 장", "마지막 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} />);
 
-    await waitFor(() => expect(screen.getByAltText("새로고침 뒤 사진")).toHaveAttribute("src", "/api/images/deliver/renewed"));
+    await waitFor(() => expect(within(document.querySelector("[data-card-stage]")!).getByAltText("새로고침 뒤 사진")).toHaveAttribute("src", "/api/images/deliver/renewed"));
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ filename: "8f6a04d2c911.png", purpose: "image", tenant_id: "tenant-s1" });
   });
 });

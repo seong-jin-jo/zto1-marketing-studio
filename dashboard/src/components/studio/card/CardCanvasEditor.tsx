@@ -217,7 +217,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
   const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const handledRequestedSlideRef = useRef<number | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
@@ -237,7 +236,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   const textEditFlushRef = useRef<(slideId: string, elementId: string, value: string) => void>(() => {});
   const textEditCommittedRef = useRef(false);
   const textEditLastCommittedValueRef = useRef<string | null>(null);
-  const lastTextPointerDownRef = useRef<{ elementId: string; at: number } | null>(null);
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
@@ -292,10 +290,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   useEffect(() => {
     if (editingTextId) textEditorRef.current?.focus();
   }, [editingTextId]);
-
-  useEffect(() => {
-    if (selectedId) setInspectorOpen(true);
-  }, [selectedId]);
 
   useEffect(() => {
     if (!requestedSlide || !workingDeck.slides.some((slide) => slide.id === requestedSlide.id)) return;
@@ -795,13 +789,10 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
       <div className={styles.workspace}>
         <div className={styles.stageColumn} data-card-stage-column>
           {toolbarElement ? (
-            <details
+            <div
               className={`${styles.inspectorDetails} ${styles.canvasInspector}`}
-              open={inspectorOpen}
-              onToggle={(event) => setInspectorOpen(event.currentTarget.open)}
               data-card-element-inspector
             >
-              <summary>{toolbarElement.name} 도구</summary>
               <CardElementToolbar
                 element={toolbarElement}
                 onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
@@ -810,7 +801,7 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
                 onDuplicate={() => duplicate(toolbarElement.id)}
                 onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
               />
-            </details>
+            </div>
           ) : null}
           <div
             ref={stageRef}
@@ -819,25 +810,14 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
             tabIndex={0}
             aria-label="카드 편집 스테이지"
             onPointerDownCapture={(event) => {
+              if (event.detail < 2) return;
               const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-element-selection]") : null;
               const elementId = target?.dataset.elementSelection;
               const element = elementId ? editableElements.find((candidate) => candidate.id === elementId) : null;
-              if (!element || element.type !== "text" || element.locked) {
-                lastTextPointerDownRef.current = null;
-                return;
-              }
-              // selection overlay는 첫 클릭의 선택 상태 변경으로 교체될 수 있다. dblclick을
-              // 자식에게만 걸면 두 번째 click이 새 DOM으로 가며 이벤트가 사라지므로,
-              // 교체되지 않는 stage의 capture 단계에서 같은 요소의 연속 누름을 판정한다.
-              const now = performance.now();
-              const previous = lastTextPointerDownRef.current;
-              lastTextPointerDownRef.current = { elementId: element.id, at: now };
-              if (previous && previous.elementId === element.id && now - previous.at <= 500) {
-                lastTextPointerDownRef.current = null;
-                event.preventDefault();
-                event.stopPropagation();
-                beginTextEdit(element);
-              }
+              if (!element || element.type !== "text" || element.locked) return;
+              event.preventDefault();
+              event.stopPropagation();
+              beginTextEdit(element);
             }}
             onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}
           >

@@ -31,7 +31,15 @@
   box-shadow: var(--elevation-floating);
 }
 
-.floatingToolbar { position: sticky; top: var(--stack); z-index: 300; box-shadow: none; }
+.addToolbar { flex-wrap: nowrap; overflow-x: auto; }
+.floatingToolbar {
+  position: sticky;
+  top: var(--stack);
+  z-index: 300;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--control-touch) * 1.5), 1fr));
+  box-shadow: none;
+}
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
@@ -108,13 +116,15 @@
   display: grid;
   width: min(100%, calc(var(--space-region) * 20));
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--stack-tight);
+  align-items: center;
 }
 
 .pageThumbnails,
 .pageActions { display: flex; gap: var(--stack-tight); align-items: center; }
 .pageThumbnails { width: 100%; overflow-x: auto; padding: var(--space-micro); }
-.pageActions { flex-wrap: wrap; justify-content: center; }
+.pageActions { max-width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; }
 .pageThumbnail {
   position: relative;
   flex: 0 0 calc(var(--control-touch) * 1.55);
@@ -147,7 +157,7 @@
   container-type: inline-size;
   min-width: 0;
   /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
-  width: min(100%, calc(var(--space-region) * 12.5));
+  width: min(100%, calc(var(--space-region) * 9.75));
   margin-inline: auto;
   overflow: clip;
   border: 1px solid var(--border);
@@ -253,7 +263,7 @@
 .canvasInspector {
   position: relative;
   z-index: 300;
-  width: min(100%, calc(var(--space-region) * 12.5));
+  width: min(100%, calc(var(--space-region) * 20));
   box-shadow: var(--elevation-floating);
 }
 
@@ -266,23 +276,8 @@
   overflow: clip;
 }
 
-.inspectorDetails > summary {
-  min-height: var(--control-touch);
-  cursor: pointer;
-  padding: var(--stack);
-  color: var(--text);
-  font-size: var(--font-body-size);
-  font-weight: 700;
-}
-
-.inspectorDetails > summary:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: var(--space-micro);
-}
-
 .inspectorDetails .floatingToolbar {
   border: 0;
-  border-top: 1px solid var(--border);
   border-radius: 0;
 }
 
@@ -377,13 +372,21 @@
   }
   .rightPanel { grid-column: auto; }
   .stageColumn { order: -2; }
-  .slideStrip { width: 100%; order: -1; }
-  .floatingToolbar { position: static; overflow: clip; flex-wrap: wrap; }
-  .floatingToolbar > * { flex: 1 1 8rem; min-width: 0; }
+  .slideStrip { width: 100%; order: initial; }
+  .floatingToolbar { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: clip; }
+  .floatingToolbar > * { min-width: 0; }
   .elementList { max-height: none; }
   .toolbarField,
   .elementList h3,
   .elementList p { font-size: var(--font-body-size); }
+  .editor button,
+  .editor input,
+  .editor select,
+  .editor textarea,
+  .editor summary,
+  .editor label,
+  .pageThumbnail > span,
+  .mediaGrid span { font-size: var(--font-body-size); }
 }
 
 @media (max-width: 26rem) {
