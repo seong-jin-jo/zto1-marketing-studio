@@ -5,7 +5,7 @@
 - 관찰됨: 실제 Next dev 3481·PostgreSQL·`chairman-photo.jpg`, page.route 0에서 8핸들, 이동, Shift resize, 회전 60도, 직접 글 수정, 두 이미지 경로, 도형, Cmd+D, Delete, 레이어 양방향, undo/redo, 0%·50% 스냅, 페이지 order 이동을 DB 값으로 확인했다. 1440 첫 화면 안에 핵심 도구가 있고 담당 패널 겹침 0, 390 가로 넘침 0, 브라우저 오류·실패 요청 0이다. 화면/PNG 차이 1.5464%다.
 - 테스트됨: 카드 집중 Vitest 24파일·318건, `tsc -p tsconfig.ci.json --noEmit`, Webpack production build 정적 페이지 188/188, 모바일 360·390·412·600·700·780·820·900·1000 전부 PASS다. 기본 Turbopack은 worktree 밖 `node_modules` 심링크를 거절했고, design-lint 기존 경고 2종과 artifact lint 기존 핀 위생 경고 28건은 남았다.
 - 증거: `logs/diff/card-editor-canva-20261010/report.md`, `measurements.json`, `mobile-ergonomics.jsonl`, 1440x900·390x844 화면, 화면·내보내기 PNG.
-- 커밋: 1차 제품 커밋 `0383f784`. 최종 실구동 스크립트·증거·문서 커밋은 이 기록 뒤 생성한다. push는 하지 않는다.
+- 커밋: 1차 제품 `0383f784`, 최종 실구동 스크립트·증거·문서 `6b32c0f3`. push는 하지 않았다.
 - 미검증: 원격 PR #135 head 반영, 원격 CI, 운영 배포, 외부 SNS 실제 게시. 다음 소유자는 컨트롤러이며 로컬 커밋을 검수한 뒤 push·CI green을 확인한다.
 
 ## 2026-10-10 21:10 KST · 카드 편집기 기본 조작 1차 구현
