@@ -360,11 +360,6 @@ export async function POST(request: Request) {
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
   const requestedImages = Array.isArray(image_urls) ? image_urls : image_url ? [image_url] : [];
-  if (platform === "linkedin" && requestedImages.length > 0) {
-    return Response.json({ ok: false, code: "LINKEDIN_IMAGE_PUBLISH_UNSUPPORTED",
-      error: "LinkedIn 이미지 발행은 아직 지원하지 않습니다. 이미지를 제거하거나 지원 채널을 선택해 주세요." },
-    { status: 422, headers: { "Cache-Control": "no-store" } });
-  }
   if (requestedImages.length > 0) {
     publishImageUrls = [];
     publishImagePaths = [];
@@ -784,8 +779,7 @@ export async function POST(request: Request) {
   } else if (platform === "discord") {
     result = await publishDiscord(cred, text || "", publishImageUrl);
   } else if (platform === "linkedin") {
-    // 2026-09-08: 아홉 채널 중 유일하게 발행 코드가 없던 자리. 텍스트 발행만 연다.
-    result = await publishLinkedIn(cred, text || "");
+    result = await publishLinkedIn(cred, text || "", publishImageUrl);
   } else if (platform === "slack") {
     result = await publishSlack(cred, text || "", publishImageUrl);
   } else if (platform === "kakao") {

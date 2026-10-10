@@ -337,7 +337,7 @@ async function publishOne(
     else if (platform === "telegram") result = await publishTelegram(cred, text, imageUrl);
     else if (platform === "discord") result = await publishDiscord(cred, text, imageUrl);
     else if (platform === "slack") result = await publishSlack(cred, text, imageUrl);
-    else if (platform === "linkedin") result = await publishLinkedIn(cred, text);
+    else if (platform === "linkedin") result = await publishLinkedIn(cred, text, imageUrl);
     else return { ok: false, error: `${platform} 미지원` };
     return { ...result, resolvedAccountId: cred.accountId };
   } catch (e) {

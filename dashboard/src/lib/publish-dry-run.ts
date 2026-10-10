@@ -16,8 +16,12 @@ export type DryRunMediaSpec = {
 
 export type DryRunRequestRecord = {
   timestamp: string;
+  requestId: string;
   tenantId: string;
   platform: string;
+  sequence: number;
+  sequenceTotal: number;
+  step: string;
   method: "POST" | "PUT";
   endpoint: string;
   body: Record<string, unknown>;
@@ -60,6 +64,30 @@ function appendRecord(record: DryRunRequestRecord): void {
   fs.appendFileSync(target, `${JSON.stringify(record)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
+function appendSequence(input: {
+  tenantId: string;
+  platform: string;
+  mediaUrls: string[];
+  mediaSpec: DryRunMediaSpec | null;
+  requests: Array<{ step: string; method: "POST" | "PUT"; endpoint: string; body: Record<string, unknown> }>;
+}): void {
+  const requestId = `dry-run-${input.platform}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  input.requests.forEach((request, index) => appendRecord({
+    timestamp: new Date().toISOString(),
+    requestId,
+    tenantId: input.tenantId,
+    platform: input.platform,
+    sequence: index + 1,
+    sequenceTotal: input.requests.length,
+    step: request.step,
+    method: request.method,
+    endpoint: request.endpoint,
+    body: request.body,
+    mediaUrls: input.mediaUrls,
+    mediaSpec: input.mediaSpec,
+  }));
+}
+
 export function inspectDryRunMedia(filePath: string): DryRunMediaSpec {
   const stat = fs.statSync(filePath);
   const probe = spawnSync("ffprobe", [
@@ -95,13 +123,113 @@ export function recordTextPublishDryRun(input: {
   const endpoint = TEXT_ENDPOINTS[input.platform];
   if (!endpoint) return { ok: false, error: `${input.platform} 드라이런 어댑터 미지원` };
   const firstImage = input.imageUrls?.[0];
-  const body: Record<string, unknown> = (() => {
+  const mediaUrls = input.imageUrls ?? [];
+  const mediaSpec = input.imagePaths?.[0] ? inspectDryRunMedia(input.imagePaths[0]) : null;
+  const requests: Array<{ step: string; method: "POST" | "PUT"; endpoint: string; body: Record<string, unknown> }> = [];
+
+  if (input.platform === "x" && firstImage) {
+    requests.push(
+      {
+        step: "media.initialize",
+        method: "POST",
+        endpoint: "https://api.x.com/2/media/upload/initialize",
+        body: { media_type: mediaSpec?.format?.includes("png") ? "image/png" : "image/jpeg", total_bytes: mediaSpec?.bytes, media_category: "tweet_image" },
+      },
+      {
+        step: "media.append",
+        method: "POST",
+        endpoint: "https://api.x.com/2/media/upload/[MEDIA_ID]/append",
+        body: { segment_index: 0, media: firstImage },
+      },
+      {
+        step: "media.finalize",
+        method: "POST",
+        endpoint: "https://api.x.com/2/media/upload/[MEDIA_ID]/finalize",
+        body: { media_id: "[MEDIA_ID]" },
+      },
+      {
+        step: "post.create",
+        method: "POST",
+        endpoint,
+        body: { text: input.text, media: { media_ids: ["[MEDIA_ID]"] } },
+      },
+    );
+  } else if (input.platform === "linkedin" && firstImage) {
+    requests.push(
+      {
+        step: "asset.register",
+        method: "POST",
+        endpoint: "https://api.linkedin.com/v2/assets?action=registerUpload",
+        body: {
+          registerUploadRequest: {
+            recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+            owner: "urn:li:person:[ACCOUNT]",
+            serviceRelationships: [{ relationshipType: "OWNER", identifier: "urn:li:userGeneratedContent" }],
+          },
+        },
+      },
+      {
+        step: "asset.upload",
+        method: "PUT",
+        endpoint: "https://[LINKEDIN_UPLOAD_HOST]/[UPLOAD_PATH]",
+        body: { media: firstImage, bytes: mediaSpec?.bytes, content_type: mediaSpec?.format?.includes("png") ? "image/png" : "image/jpeg" },
+      },
+      {
+        step: "post.create",
+        method: "POST",
+        endpoint,
+        body: {
+          author: "urn:li:person:[ACCOUNT]",
+          lifecycleState: "PUBLISHED",
+          specificContent: {
+            "com.linkedin.ugc.ShareContent": {
+              shareCommentary: { text: input.text },
+              shareMediaCategory: "IMAGE",
+              media: [{ status: "READY", media: "urn:li:digitalmediaAsset:[ASSET_ID]" }],
+            },
+          },
+          visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
+        },
+      },
+    );
+  } else if (input.platform === "bluesky" && firstImage) {
+    requests.push(
+      {
+        step: "session.create",
+        method: "POST",
+        endpoint: "https://bsky.social/xrpc/com.atproto.server.createSession",
+        body: { identifier: "[ACCOUNT]", password: "[REDACTED]" },
+      },
+      {
+        step: "blob.upload",
+        method: "POST",
+        endpoint: "https://bsky.social/xrpc/com.atproto.repo.uploadBlob",
+        body: { media: firstImage, bytes: mediaSpec?.bytes },
+      },
+      {
+        step: "post.create",
+        method: "POST",
+        endpoint,
+        body: {
+          repo: "[DID]",
+          collection: "app.bsky.feed.post",
+          record: {
+            $type: "app.bsky.feed.post",
+            text: input.text,
+            createdAt: "[NOW]",
+            embed: { $type: "app.bsky.embed.images", images: [{ image: "[BLOB_REF]", alt: "" }] },
+          },
+        },
+      },
+    );
+  } else {
+    const body: Record<string, unknown> = (() => {
     if (input.platform === "threads") return { text: input.text, media_type: firstImage ? "IMAGE" : "TEXT", image_url: firstImage };
-    if (input.platform === "x") return { text: input.text, media: firstImage ? { media_ids: ["[UPLOAD_REQUIRED]"] } : undefined };
+    if (input.platform === "x") return { text: input.text };
     if (input.platform === "instagram") return { caption: input.text, media_type: (input.imageUrls?.length ?? 0) > 1 ? "CAROUSEL" : "IMAGE", image_url: firstImage };
-    if (input.platform === "facebook") return { message: input.text, url: firstImage };
+    if (input.platform === "facebook") return firstImage ? { caption: input.text, url: firstImage } : { message: input.text };
     if (input.platform === "linkedin") return { author: "urn:li:person:[ACCOUNT]", commentary: input.text, visibility: "PUBLIC" };
-    if (input.platform === "bluesky") return { collection: "app.bsky.feed.post", record: { text: input.text, createdAt: "[NOW]" }, image_url: firstImage };
+    if (input.platform === "bluesky") return { collection: "app.bsky.feed.post", record: { text: input.text, createdAt: "[NOW]" } };
     if (input.platform === "telegram") return firstImage ? { chat_id: "[ACCOUNT]", caption: input.text, photo: firstImage } : { chat_id: "[ACCOUNT]", text: input.text };
     if (input.platform === "discord") return { content: input.text, embeds: firstImage ? [{ image: { url: firstImage } }] : [] };
     if (input.platform === "slack") return { text: input.text, blocks: firstImage ? [{ type: "image", image_url: firstImage, alt_text: "publish media" }] : [] };
@@ -117,17 +245,19 @@ export function recordTextPublishDryRun(input: {
       };
     }
     return { text: input.text, media_count: input.imageUrls?.length ?? 0 };
-  })();
-  appendRecord({
-    timestamp: new Date().toISOString(),
-    tenantId: input.tenantId,
-    platform: input.platform,
-    method: "POST",
-    endpoint,
-    body,
-    mediaUrls: input.imageUrls ?? [],
-    mediaSpec: input.imagePaths?.[0] ? inspectDryRunMedia(input.imagePaths[0]) : null,
-  });
+    })();
+    requests.push({
+      step: "post.create",
+      method: "POST",
+      endpoint: input.platform === "facebook" && firstImage
+        ? "https://graph.facebook.com/v21.0/{page-id}/photos"
+        : input.platform === "telegram" && firstImage
+          ? "https://api.telegram.org/bot[REDACTED]/sendPhoto"
+          : endpoint,
+      body,
+    });
+  }
+  appendSequence({ tenantId: input.tenantId, platform: input.platform, mediaUrls, mediaSpec, requests });
   return {
     ok: true,
     externalId: `dry-run-${input.platform}-${Date.now()}`,
@@ -149,8 +279,12 @@ export function recordVideoPublishDryRun(input: {
   const mediaSpec = inspectDryRunMedia(input.videoPath);
   appendRecord({
     timestamp: new Date().toISOString(),
+    requestId: `dry-run-${input.platform}-${Date.now()}`,
     tenantId: input.tenantId,
     platform: input.platform,
+    sequence: 1,
+    sequenceTotal: 1,
+    step: "video.publish",
     method: "POST",
     endpoint,
     body: {

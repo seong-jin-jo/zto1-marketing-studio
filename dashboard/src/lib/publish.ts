@@ -1684,14 +1684,14 @@ export async function publishKakao(cred: ChannelCred, text: string, imageUrl?: s
  * 공개 범위는 전체 공개로 고정한다. 마케팅 발행 도구가 아무도 못 보는 글을 올리는 것은
  * 사용자가 기대한 일이 아니다. 나중에 선택이 필요해지면 그때 화면에 내놓는다.
  *
- * 이미지 첨부는 이번 범위에서 제외한다. LinkedIn 은 별도 업로드 등록 절차를 요구해
- * 텍스트 발행과 실패 모양이 다르다. 반쯤 되는 첨부를 넣는 것보다 텍스트를 확실히 하는 편이
- * 낫다. 첨부가 필요해지면 그때 등록 절차까지 함께 넣는다.
+ * 이미지가 있으면 디지털 자산 등록, 반환된 업로드 URL로 바이트 전송, UGC 게시물의
+ * 미디어 연결까지 한 묶음으로 끝낸다. 어느 단계든 실패하면 이미지를 버리고 텍스트만
+ * 조용히 올리지 않는다.
  */
 const LINKEDIN_API = "https://api.linkedin.com/v2";
 const LINKEDIN_MAX_TEXT = 3000;
 
-export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<PublishResult> {
+export async function publishLinkedIn(cred: ChannelCred, text: string, imageUrl?: string): Promise<PublishResult> {
   const body = (text || "").trim();
   if (!body) return { ok: false, error: "LinkedIn 발행할 본문이 없습니다." };
   if ([...body].length > LINKEDIN_MAX_TEXT) {
@@ -1702,6 +1702,65 @@ export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<
     return { ok: false, error: "LinkedIn 계정 식별자를 찾지 못했습니다. 설정에서 다시 연결해 주세요." };
   }
   const author = cred.userId.startsWith("urn:") ? cred.userId : `urn:li:person:${cred.userId}`;
+
+  let assetUrn: string | undefined;
+  if (imageUrl) {
+    const resolved = await resolveServerImageBytes(imageUrl);
+    if ("error" in resolved) return { ok: false, error: `LinkedIn 이미지 준비 실패: ${resolved.error}` };
+    let registered: Response;
+    try {
+      registered = await fetch(`${LINKEDIN_API}/assets?action=registerUpload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cred.token}`,
+          "Content-Type": "application/json",
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify({
+          registerUploadRequest: {
+            recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+            owner: author,
+            serviceRelationships: [{ relationshipType: "OWNER", identifier: "urn:li:userGeneratedContent" }],
+          },
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, error: "LinkedIn 이미지 업로드 등록 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+    }
+    if (!registered.ok) {
+      return { ok: false, error: `LinkedIn 이미지 업로드 등록에 실패했습니다(오류 코드 ${registered.status}).`,
+        failureKind: isAmbiguousProviderHttpStatus(registered.status) ? "indeterminate" : "definitive" };
+    }
+    const registration = (await registered.json().catch(() => ({}))) as {
+      value?: {
+        asset?: string;
+        uploadMechanism?: {
+          "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"?: { uploadUrl?: string };
+        };
+      };
+    };
+    assetUrn = registration.value?.asset;
+    const uploadUrl = registration.value?.uploadMechanism?.["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]?.uploadUrl;
+    if (!assetUrn || !uploadUrl) {
+      return { ok: false, error: "LinkedIn 이미지 업로드 주소를 받지 못했습니다.", failureKind: "indeterminate" };
+    }
+    let uploaded: Response;
+    try {
+      uploaded = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${cred.token}`, "Content-Type": resolved.contentType },
+        body: Uint8Array.from(resolved.bytes),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, error: "LinkedIn 이미지 전송 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+    }
+    if (!uploaded.ok) {
+      return { ok: false, error: `LinkedIn 이미지 전송에 실패했습니다(오류 코드 ${uploaded.status}).`,
+        failureKind: isAmbiguousProviderHttpStatus(uploaded.status) ? "indeterminate" : "definitive" };
+    }
+  }
 
   let res: Response;
   try {
@@ -1718,7 +1777,8 @@ export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<
         specificContent: {
           "com.linkedin.ugc.ShareContent": {
             shareCommentary: { text: body },
-            shareMediaCategory: "NONE",
+            shareMediaCategory: assetUrn ? "IMAGE" : "NONE",
+            ...(assetUrn ? { media: [{ status: "READY", media: assetUrn }] } : {}),
           },
         },
         visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
