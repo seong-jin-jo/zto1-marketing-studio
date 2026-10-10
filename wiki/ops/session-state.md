@@ -1,9 +1,9 @@
-## 2026-10-11 01:56 KST · 영상 편집기 R2 완료·커밋 대기
+## 2026-10-11 02:00 KST · 영상 편집기 R2 완료
 
 - handoff basis: 사용자 R2 반려 4항목을 모두 실제 화면·DB·worker·MP4 경로로 재검증했다. 현재 구현 커밋은 `06bbb111`, `d68191e3`, `eec25a0d`, `719a8ea9`다.
 - 완료: 384px 미리보기, 옆 자막 3문장, 아래 전체폭 타임라인, 클립 이름·프레임 띠·비겹침, 12.120초 실영상, 자르기 3회·삭제 1회·트림·재정렬·자막 편집, 8.720초 실제 내보내기를 확인했다.
 - 게이트: TypeScript PASS, production Webpack build PASS, 실제 경로 E2E PASS, CI 동일 전체 Vitest 518파일·3,792건 PASS, 3파일·16건 skip. 캡처 4장과 출력 MP4를 원본 크기로 직접 확인했다.
-- 남은 실행: 문서·최종 증거만 커밋하고 artifact lint와 git status를 확인한다. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 변경이라 제외한다. push·외부 SNS 게시·운영 배포는 하지 않는다.
+- 커밋: 기능·증거는 `06bbb111`, `d68191e3`, `eec25a0d`, `719a8ea9`, `712c491e`에 작업 단위로 고정했다. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 변경이라 제외했다. push·외부 SNS 게시·운영 배포는 하지 않았다.
 
 ## 2026-10-11 00:35 KST · 영상 편집기 R2 실제 경로 PASS·최종 검증 진행
 
