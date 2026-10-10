@@ -1,3 +1,10 @@
+## 2026-10-11 02:08 KST · R4 원인 확정과 모델 계약 교정
+
+- 원인: R3 실제 job JSON과 route import chain을 대조했다. 제공자 요청은 `text2image_soul_v2`, 텍스트 프롬프트, 9:16, 1.5k뿐이었고 참조 이미지·초안 본문·화면 캡처는 없었다. Soul V2가 무문자 금지 나열에도 세로 장식 캡션을 자율 생성했고 이 모델의 CLI 계약에는 `negative_prompt`가 없다.
+- 변경: 무문자 대표 이미지 경로를 `gpt_image_2_5`의 1k/low로 고정하고, 저장 job에 model·resolution·quality·빈 reference 목록을 남긴다. 클라이언트가 reference 필드를 보내도 CLI로 승격하지 않는 회귀 테스트를 추가했다.
+- 검증: 신규 정상·거절 계약 2건과 기존 비동기 생성 10건, 합계 12건 PASS. CLI 비용 실측은 Soul V2 0.12 credit, GPT Image 2.5 0.25 credit다.
+- next action: 이 구현 단위를 커밋한 뒤 로컬 스택의 실제 `/api/higgsfield/image` 경로로 정확히 3장을 만들고, 원본 육안과 회전 포함 Tesseract OCR에서 3/3 무문자를 확인한다.
+
 ## 2026-10-11 02:01 KST · 로컬 실제 경로 R4 무문자 생성 원인 규명 착수
 
 - handoff basis: 사용자가 지정한 R4 원문과 직전 R3 커밋 `3da86ac5`를 정본으로 이어간다. tmux `openclaw-auto-3:0.1`은 직전 R3 종료 로그, `openclaw-auto-3:0.3`은 더 오래된 동일 worktree 실행 로그로 확인했고, 현재 R4 지시가 우선한다.
