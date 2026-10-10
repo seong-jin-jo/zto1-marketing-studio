@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-10-10 22:47 KST · 영상 편집기 CapCut·Vrew 기본 조작
+
+STAMP: 2026-10-10 22:47 KST | model: gpt-5-codex | agent: code-builder | skill: qa | 근거: v71 승인 시안, CapCut·Vrew 공식 문서, 실제 Chromium·PostgreSQL·export worker·MP4 | 고민: 화면 요소 수나 목 서버를 합격 근거로 쓰지 않고 편집 JSON, 재생 점프, ffprobe, 원본·삭제 프레임 차이, 자막 픽셀을 한 경로에서 대조했다.
+
+**기존 구현 확인:** 자막 문장 클릭·수정·구간 컷과 단일 영상 재생은 있었지만 영상 트랙은 한 덩어리였다. 재생헤드 분할, 클립 선택 삭제, 트림, 재정렬, 타임라인 확대, 통합 실행취소가 없었고 export renderer도 클립 순서를 읽지 않았다. 고객 `osmu_` 토큰은 프록시를 통과한 뒤 Studio 신원 어댑터에서 다시 401이 됐고, 서명 MP4 주소도 프록시가 Bearer를 요구했다.
+
+**추가·변경:** `VideoEdit.clips`를 구데이터 호환 선택 필드로 추가하고 미리보기·ffmpeg가 같은 `playbackSegments`를 사용한다. S·Delete, 양끝 트림, 순서 드래그, 재생헤드, 75~400% 확대, undo·redo를 연결했다. Vrew식 자막 목록은 클릭 이동·문장 수정·구간 삭제를 유지하면서 화면 직접 드래그, 고딕·명조·둥근 고딕, 70~160% 크기와 색을 추가했다. drawtext 없는 로컬 ffmpeg는 node-canvas 투명 레이어와 ffmpeg overlay로 동일 편집 계약을 굽는다. 고객 API 토큰과 서명 MP4 배달 경계를 실제 브라우저 경로에 연결했다.
+
+**검증:** page.route 없이 Next dev 3482, 격리 PostgreSQL, 실제 고객 토큰·초안·자동저장, 실제 `chairman-photo-motion.mp4`, 실제 export worker를 구동했다. 1440×900에서 미리보기·타임라인 동시 노출과 대화창 겹침 0, 실제 재생의 `3.0초 → 0.0초` 점프, 모바일 9폭 사용성 전부 PASS다. MP4는 예상·ffprobe 모두 1.200초이며 삭제 구간 프레임이 없고 노랑 자막은 활성 레이어 1개다. 앱 콘솔 오류와 외부 SNS 게시는 0건이다. 실제 ffmpeg 렌더 통합 2건, TypeScript, `next build --webpack`도 PASS다. 기본 Turbopack build는 이 worktree의 `node_modules`가 다른 worktree를 가리키는 symlink라 프로젝트 루트 밖 경로로 거절됐고, 소스가 아닌 로컬 worktree 의존성 배치 문제다. 상세 수치는 `logs/diff/video-editor-capcut-20261010/report.md`다.
+
+**기존 경고:** design-lint는 종료 코드 0과 레포 기존 인라인 style·hex 경고 2종, artifact lint는 핀 실체·슬롯키·버전 정합 PASS와 기존 핀 위생 경고 28건이다. 원격 CI와 운영 배포는 미검증이다.
+
+SOURCES/MODEL: gpt-5-codex | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `logs/diff/video-editor-capcut-20261010/report.md` | https://www.capcut.com/resource/how-to-use-capcut | https://vrew.ai/en/feature/text-based-video-editing/
+
 ## 2026-10-09 13:20 KST · 운영 편집실 R8 타임라인 시각 회귀 복구
 
 STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r7-timeline-focused-r6.log`, `/tmp/zto1-r7-timeline-build-r6.log`, `/tmp/zto1-r7-timeline-v70-r6/observations.json`, `logs/diff/editroom-chairman-fix-r7/after/result.json` | 고민: CI 수치만 맞추지 않고 1440·1512·390과 v71 원본을 함께 열어 레인·블록·카톡 말풍선을 육안 확인했다.

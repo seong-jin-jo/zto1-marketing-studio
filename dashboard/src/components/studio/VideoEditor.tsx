@@ -5,7 +5,7 @@
  *
  * 1단계(과업 B)는 4단 세로 아코디언 + 초 숫자 입력칸이었다. 회장 R-25가 "편집실이
  * 못 쓸 물건", "영상 편집은 CapCut·Vrew 수준이어야 한다"고 지적했다(20번 가까이 "왜
- * 멈추냐"). 이번 판은 규격표 §4 그대로: 플레이어(288px) + 자막 대본(1fr) 위, 3레인
+ * 멈추냐"). 이번 판은 규격표 §4 그대로: 플레이어(288px) + 자막 대본(1fr) 위, 5레인
  * 타임라인(168px) 아래. 자막 한 줄 = 한 컷. 초 숫자 입력칸은 타임라인 드래그로 대체한다.
  *
  * 유지: 오버레이 추가 폼(`OverlayEditor`)·댓글 폼(`CommentOverlayEditor`)·음성 선택
@@ -369,7 +369,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <Button size="sm" variant={showOriginal ? "primary" : "secondary"} aria-pressed={showOriginal} onClick={() => setShowOriginal((value) => !value)} data-video-original-toggle>{showOriginal ? "편집 상태로" : "원본으로"}</Button>
       </div>
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[64rem]:[grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]">
-        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*4.5)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*9)_minmax(0,1fr)] max-[64rem]:[grid-template-columns:calc(var(--space-region)*6.625)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}
@@ -395,9 +395,12 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               setPlaybackTime(videoRef.current?.currentTime ?? 0);
             }}
             onTimeUpdate={(t) => {
+              // 플레이어의 실제 시각은 인트로·아웃트로 경계 표시에도 쓰인다. 마지막
+              // 편집 클립을 지난 경우 아래에서 조기 반환하더라도 먼저 갱신해야 본문
+              // 자막·오버레이가 아웃트로 위에 남지 않는다.
+              setPlaybackTime(t);
               const bodyTime = bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro);
               if (showOriginal || !duration || !segments.length) {
-                setPlaybackTime(t);
                 setPlayhead(bodyTime);
                 return;
               }
@@ -416,12 +419,11 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
                 setPlayhead(next.outputStartSec);
                 return;
               }
-              setPlaybackTime(t);
               setPlayhead(current.outputStartSec + bodyTime - current.startSec);
             }}
             onSeek={seekBodyTime}
           />
-          <div className="min-w-0 max-h-[calc(var(--space-region)*8)] space-y-stack overflow-y-auto" data-video-script-column>
+          <div className="min-w-0 max-h-[calc(var(--space-region)*6.5)] space-y-stack overflow-y-auto" data-video-script-column>
             {drawerOpen ? (
               <VideoInsertDrawer
                 edit={videoEdit}
@@ -659,7 +661,7 @@ function VideoPlayback({
 
   return (
     <div className="relative min-w-0 max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto] max-[26rem]:gap-stack-tight" data-video-playback>
-      <div ref={screenRef} className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
+      <div ref={screenRef} className="relative h-[calc(var(--space-region)*6.5)] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
             <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>
@@ -718,12 +720,12 @@ function VideoPlayback({
           <p
             data-video-subtitle-active
             data-video-subtitle-active-cut={activeSubtitle.cut}
-            className={`absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-move select-none text-center font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${subtitleStyle.fontFamily === "serif" ? "font-serif" : "font-sans"} ${activeSubtitle.cut ? "opacity-45" : ""}`}
+            className={`absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-move select-none text-center font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${subtitleStyle?.fontFamily === "serif" ? "font-serif" : "font-sans"} ${activeSubtitle.cut ? "opacity-45" : ""}`}
             style={{
-              left: `${subtitleStyle.xPercent ?? 50}%`,
-              top: `${subtitleStyle.yPercent ?? (subtitleStyle.position === "top" ? 18 : subtitleStyle.position === "middle" ? 50 : 78)}%`,
-              color: subtitleStyle.color ?? "#ffffff",
-              fontSize: `${Math.max(70, subtitleStyle.sizePercent) / 100}rem`,
+              left: `${subtitleStyle?.xPercent ?? 50}%`,
+              top: `${subtitleStyle?.yPercent ?? (subtitleStyle?.position === "top" ? 18 : subtitleStyle?.position === "middle" ? 50 : 78)}%`,
+              color: subtitleStyle?.color ?? "#ffffff",
+              fontSize: `${Math.max(70, subtitleStyle?.sizePercent ?? 100) / 100}rem`,
             }}
             onPointerDown={(event) => { event.preventDefault(); setSubtitleDragging(true); }}
             aria-label="자막 위치 드래그"
@@ -1093,7 +1095,9 @@ function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (
           setLoadError("음성 설정이 아직 연결되지 않았습니다. 설정에서 먼저 연결해 주세요.");
           return;
         }
-        console.error("elevenlabs-voices 응답 실패", { status: res.status, code: data?.code });
+        // 고객 계정에 음성 제공자 설정이 없는 403은 선택 기능의 정상 비활성 상태다.
+        // 브라우저 오류로 기록하면 편집 본체가 깨진 것처럼 운영 관측을 오염시킨다.
+        console.warn("elevenlabs-voices 사용 불가", { status: res.status, code: data?.code });
         setLoadError("목소리 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       })
       .catch((cause) => {

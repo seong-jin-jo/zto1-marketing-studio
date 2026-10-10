@@ -1,3 +1,35 @@
+## 2026-10-11 00:07 KST · 영상 편집기 R2 반려 반영 착수
+
+- handoff basis: 사용자가 지정한 R2 반려 4항목과 `captures/02-edited-timeline-and-subtitle.png` 육안 판정을 정본으로 이어간다. 직전 구현은 현재 worktree의 미커밋 변경이며 별도 tmux 구현자 handoff는 없다.
+- 반려 원인: 1440×900 미리보기 높이가 약 140px로 주 작업물이 되지 못했고, 1.2초 검증 소스와 88px 클립 최소 폭 때문에 실제 편집 밀도·라벨·썸네일을 증명하지 못했다.
+- 현재 경계: 직전 코드의 TypeScript와 관련 계약 4파일 91건은 PASS다. 전체 Vitest의 `home-metrics.db` 1건은 제품 회귀가 아니라 testdb 전용 가드로 실패했다. 직전 변경을 먼저 작업 단위 커밋한 뒤 R2 화면·실영상·증거를 별도 커밋한다.
+- 다음 실행: 4.17초 Higgsfield 원본과 `dashboard/public/qa` 실영상을 ffmpeg로 이어 12초 이상 소스를 만든다. 미리보기 380px 이상, 옆 자막 목록, 아래 전체폭 타임라인, fit 기본 배율·최소 클립 폭·프레임 띠를 구현하고 3회 자르기·1회 삭제·3문장 자막을 실제 경로로 재검증한다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 변경이라 stage하지 않는다. push·외부 SNS 실제 게시·다른 worktree 수정은 하지 않는다.
+
+## 2026-10-10 22:47 KST · 영상 편집기 실제 경로 PASS, 전체 회귀·커밋 진행 중
+
+- handoff basis: 사용자 지정 브랜치 `fix/video-editor-capcut-20261010`, v71 승인 시안, 2026-10-09 회장 결함 목록을 정본으로 계속 작업했다. 이 세션의 tmux pane 외 별도 구현자 handoff는 없다.
+- 구현: `VideoEdit.clips`와 단일 `playbackSegments` 시간축, S/Delete·트림·재정렬·재생헤드·확대, undo·redo, 자막 직접 이동·글꼴·크기·색, 고객 `osmu_` 신원, 서명 MP4 배달, drawtext 미지원 ffmpeg의 canvas overlay 폴백을 연결했다.
+- 관찰됨: page.route 없는 실제 Next dev 3482·격리 PostgreSQL·실영상·export worker 경로가 PASS했다. 첫 화면 겹침 0, 편집 재생 `3.0→0.0초` 점프, MP4 예상·실측 1.200초, 삭제 프레임 부재, 활성 자막 1개·노랑 267픽셀, 앱 콘솔 오류 0, 모바일 9폭 PASS다. 증거는 `logs/diff/video-editor-capcut-20261010/`다.
+- 테스트됨: 집중 4파일 95건과 TypeScript PASS. 실제 renderer, 전체 Vitest, production build는 이 인계 시점에 heavy-slot 실행·대기 중이라 아직 최종 판정에 합치지 않았다.
+- 보존: 외부 SNS 게시, push, 운영 배포는 실행하지 않는다. `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`는 다른 변경이라 stage하지 않는다.
+- 다음 실행: 실제 renderer → 전체 Vitest → production build 결과를 확인하고 문서 수치를 확정한 뒤 과제 파일과 증거만 커밋한다.
+
+## 2026-10-10 21:16 KST · 편집 계약·UI 구현 청크
+
+- 기준: 회장 확정 v71 시안과 2026-10-09 결함 목록. 첫 커밋 `c52b70dd`에서 선택적 `clips` 계약, split/delete/trim/reorder, ffmpeg 순서 보존을 구현했다.
+- UI: S 자르기, 선택 삭제, 클립 양끝 트림, 드래그 순서 변경, 재생헤드 드래그, 75~400% 확대, 실행취소·다시실행, 자막 직접 위치 이동·글꼴·크기·색을 `VideoEditor`에 연결했다.
+- 검증: 신규 계약 4건과 기존 관련 테스트를 합친 49건 PASS. 실제 브라우저·실제 MP4 픽셀/ffprobe 검증은 다음 청크로 진행 중이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`의 기존 변경은 제품 커밋에서 제외한다. push·외부 SNS 게시 금지 유지.
+
+## 2026-10-10 21:10 KST · 영상 편집기 CapCut·Vrew 기본 조작 착수
+
+- handoff basis: 사용자가 지정한 worktree `/Users/sj/wt/zto1-video-editor-capcut-20261010`, 브랜치 `fix/video-editor-capcut-20261010`, HEAD `5f633b2e76d5`, v71 시안과 회장 결함 보고를 정본으로 삼았다. tmux `openclaw-auto-3:0.2`는 이 작업의 현재 로그 pane이며 별도 구현자가 아니다.
+- 현재 판정: 자막 문장 클릭·수정·컷, 자막·오버레이 타임 블록, 컷 구간 ffmpeg 제거는 이미 있다. 영상 레인은 단일 정적 블록이라 재생헤드 분할·클립 선택 삭제·영상 트림·순서 변경·확대축소·통합 실행취소가 없고, 내보내기도 클립 순서를 읽지 않는다.
+- 실행 중: QA tracker에 VIDEO-CAPCUT-01~05를 NG로 등록했다. CapCut 공식 split·trim·reorder와 Vrew 공식 text-based delete 기준을 조회했다. 하나의 클립 편집 계획을 미리보기와 ffmpeg가 공유하도록 실패 테스트부터 추가한다.
+- 이웃 영향 후보: 구형 `videoEdit` JSON 호환, 자막 cut과 새 클립 삭제의 중복 제거, 인트로·아웃트로 시간축, 오버레이·음악 렌더, 자동저장·재접속, 1440×900 접힘선, 편집 담당 대화창, 모바일 9폭, 외부 SNS 게시 차단을 종료 전에 대조한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`의 기존 타 세션 변경은 제품 커밋에 포함하지 않는다. push와 외부 SNS 실제 게시는 하지 않는다.
+
 ## 2026-10-09 13:26 KST · 운영 편집실 R8 개발 품질헌법 대조 완료
 
 - handoff basis: 사용자가 지정한 커밋 `584b5067`까지의 변경과 `/Users/sj/.claude/standards/standard-dev.md`를 정본으로 감사했다.

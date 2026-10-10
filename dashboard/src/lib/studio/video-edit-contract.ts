@@ -229,6 +229,7 @@ const SUBTITLE_ALLOWED_KEYS = new Set(["id", "order", "text", "startSec", "endSe
 const TEXT_STICKER_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec", "endSec", "animation"]);
 const CLIP_ALLOWED_KEYS = new Set(["id", "order", "sourceStartSec", "sourceEndSec"]);
 const COVER_ALLOWED_KEYS = new Set(["source", "recommendationIndex", "frameSec", "imageUrl", "imageFilename", "textPreset"]);
+export const MAX_VIDEO_CLIPS = 256;
 
 function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
   for (const key of Object.keys(value)) {
@@ -333,10 +334,14 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
   });
   const clips = v.clips ?? [];
   if (!Array.isArray(clips)) throw new VideoEditValidationError("clips_not_array", "videoEdit.clips must be an array");
+  if (clips.length > MAX_VIDEO_CLIPS) throw new VideoEditValidationError("clips_too_many", `videoEdit.clips must contain at most ${MAX_VIDEO_CLIPS} clips`);
+  const clipIds = new Set<string>();
   clips.forEach((item, index) => {
     assertNoUnknownKeys(item as Record<string, unknown>, CLIP_ALLOWED_KEYS, `clips[${index}]`);
     const clip = item as Partial<VideoClip>;
     if (typeof clip.id !== "string" || !clip.id) throw new VideoEditValidationError("clip_id", `clips[${index}].id must be set`);
+    if (clipIds.has(clip.id)) throw new VideoEditValidationError("clip_id_duplicate", `clips[${index}].id must be unique`);
+    clipIds.add(clip.id);
     assertValidOrder(clip.order, `clips[${index}]`);
     assertValidRange(clip.sourceStartSec, clip.sourceEndSec, `clips[${index}]`);
   });

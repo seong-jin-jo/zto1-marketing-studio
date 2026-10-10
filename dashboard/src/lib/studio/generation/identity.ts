@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { ensureTenantForUser, getTenantStatus } from "@/lib/tenant-auth";
+import { ensureTenantForUser, getTenantStatus, resolveTenantToken } from "@/lib/tenant-auth";
 import { verifySupabaseJwt } from "@/lib/supabase";
 import { StudioApiError } from "./errors";
 
@@ -101,9 +101,40 @@ async function resolveCustomerPrincipal(request: Request): Promise<StudioPrincip
   return { memberId: verified.user.id, allowedWorkspaceIds: new Set([workspaceId]) };
 }
 
+async function resolveTenantTokenPrincipal(raw: string): Promise<StudioPrincipal> {
+  let workspaceId: string | null;
+  let status: string | null;
+  try {
+    workspaceId = await resolveTenantToken(raw);
+    status = workspaceId ? await getTenantStatus(workspaceId) : null;
+  } catch {
+    throw new StudioApiError({
+      status: 503,
+      code: "IDENTITY_ADAPTER_UNAVAILABLE",
+      message: "Studio 작업 공간을 확인하지 못했습니다",
+      retryable: true,
+    });
+  }
+  if (!workspaceId) {
+    throw new StudioApiError({ status: 401, code: "TOKEN_INVALID", message: "Studio 인증에 실패했습니다" });
+  }
+  if (status !== "active") {
+    throw new StudioApiError({
+      status: 403,
+      code: status === "paused" ? "ACCOUNT_PAUSED" : "ACCOUNT_UNAVAILABLE",
+      message: status === "paused" ? "계정 이용이 중지되었습니다" : "작업 공간을 사용할 수 없습니다",
+    });
+  }
+  // API 토큰은 회원 JWT가 아니므로 작업 공간 자체를 안정적인 실행 주체로 쓴다.
+  // 토큰 원문은 DB 레코드와 로그에 남기지 않으며, 같은 작업 공간의 토큰을 교체해도
+  // 멱등성·조회 경계가 끊기지 않는다.
+  return { memberId: `tenant-token:${workspaceId}`, allowedWorkspaceIds: new Set([workspaceId]) };
+}
+
 export async function resolveStudioPrincipal(request: Request): Promise<StudioPrincipal> {
+  const raw = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (raw.startsWith("osmu_")) return resolveTenantTokenPrincipal(raw);
   if (process.env.NODE_ENV !== "production" && process.env.STUDIO_IDENTITY_MODE === "development") {
-    const raw = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
     const developmentToken = process.env.STUDIO_DEV_BEARER_TOKEN ?? "";
     if (raw && developmentToken && safeEqual(raw, developmentToken)) {
       return resolveDevelopmentPrincipal(request);

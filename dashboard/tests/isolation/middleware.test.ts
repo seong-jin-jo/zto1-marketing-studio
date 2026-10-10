@@ -513,6 +513,14 @@ describe("proxy /api/media/<token> — 프록시 레벨 인증 없이 핸들러�
     const req = new NextRequest("http://localhost/api/media/%20%20not-a-real-token%20%20", { method: "GET" });
     expect(isPass(await proxy(req))).toBe(true);
   });
+  it("VIDEO-EXPORT-AUTH-01 정상: 서명된 MP4 배달 URL은 Bearer 없이 핸들러로 통과한다", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DASHBOARD_AUTH_TOKEN", "secret-abc");
+    const req = new NextRequest("http://localhost/api/exports/deliver/whatever-signed-token", { method: "GET" });
+    expect(isPass(await proxy(req))).toBe(true);
+    expect(mockResolveTenantToken).not.toHaveBeenCalled();
+    expect(mockVerifySupabaseJwt).not.toHaveBeenCalled();
+  });
 });
 
 describe("proxy 비디오 워크플로우 라우트 — tenant-aware(BLOCKER #2, OAuth/osmu 사용자 접근)", () => {

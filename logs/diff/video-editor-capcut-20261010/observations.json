@@ -1,0 +1,209 @@
+{
+  "observations": [
+    {
+      "check": "first_screen",
+      "preview": {
+        "x": 265,
+        "y": 422,
+        "width": 144,
+        "height": 208
+      },
+      "timeline": {
+        "x": 265,
+        "y": 646,
+        "width": 806,
+        "height": 248
+      },
+      "assistantOverlapPx2": 0
+    },
+    {
+      "check": "autosave",
+      "status": 200
+    },
+    {
+      "check": "edited_playback_jump",
+      "fromSourceEndSec": 3,
+      "toSourceStartSec": 0,
+      "observedSourceSec": 0
+    },
+    {
+      "check": "mobile_ergonomics",
+      "widths": [
+        {
+          "width": 360,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 70,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 390,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 70,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 412,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 70,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 600,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 70,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 700,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 70,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 780,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 100,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 820,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 100,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 900,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 100,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 1000,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 100,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 2,
+          "loadError": false,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "check": "export_queue",
+      "status": "succeeded",
+      "itemStatus": "succeeded"
+    },
+    {
+      "check": "real_export",
+      "source": "dashboard/public/qa/chairman-photo-motion.mp4",
+      "expectedDuration": 1.2000000000000002,
+      "actualDuration": 1.2,
+      "durationDelta": 2.220446049250313e-16,
+      "frameDiffs": {
+        "firstToExpected": 0.4016927083333333,
+        "firstToDeleted": 23.249674479166668,
+        "secondToExpected": 0.5787760416666666,
+        "secondToDeleted": 21.091145833333332
+      },
+      "subtitlePixels": {
+        "yellowPixels": 267,
+        "rowClusters": 9,
+        "firstRow": 130,
+        "lastRow": 294
+      },
+      "activeSubtitleLayers": 1,
+      "savedClips": [
+        {
+          "id": "clip-wg1rcfhd",
+          "order": 0,
+          "sourceEndSec": 3,
+          "sourceStartSec": 2.8
+        },
+        {
+          "id": "clip-iq6w6e7h",
+          "order": 1,
+          "sourceEndSec": 1,
+          "sourceStartSec": 0
+        }
+      ],
+      "subtitleStyle": {
+        "color": "#ffd600",
+        "preset": "basic",
+        "outline": true,
+        "position": "bottom",
+        "fontFamily": "serif",
+        "sizePercent": 120
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "optionalProviderWarnings": [
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+  ]
+}

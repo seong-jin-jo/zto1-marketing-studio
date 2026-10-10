@@ -134,7 +134,8 @@ export function alignPlaybackScript(edit: VideoEdit, lines: string[]): VideoEdit
 }
 
 export function playbackHasWork(edit: VideoEdit): boolean {
-  return edit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
+  return Boolean(edit.clips?.length)
+    || edit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
     || edit.overlays.some((item) => item.text.trim().length > 0)
     || edit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0)
     || (edit.textStickers ?? []).some((item) => item.text.trim().length > 0)
@@ -247,6 +248,19 @@ type SourceWindow = {
 };
 
 type OutputWindow = SourceWindow;
+
+export type PlaybackDrawLayer = {
+  text: string;
+  startSec: number;
+  endSec: number;
+  fontSize: number;
+  x: number;
+  y: number;
+  color: string;
+  outline: boolean;
+  box: boolean;
+  boxColor: string;
+};
 
 export function normalizeSubtitleWindows(
   subtitles: VideoEdit["subtitles"],
@@ -427,13 +441,14 @@ function drawFilters(windows: OutputWindow[], input: {
   size: SubtitleSize;
   fontFile?: string | null;
   edit: VideoEdit;
-}): string[] {
+}): { filters: string[]; layers: PlaybackDrawLayer[] } {
   const subtitleStyle = input.edit.subtitleStyle ?? { preset: "basic", position: "bottom", sizePercent: 100, outline: true };
   const fontSize = Math.max(14, Math.round(subtitleFontSize(input.size, input.width) * subtitleStyle.sizePercent / 100));
   const maxWidth = Math.max(fontSize * 4, Math.round(input.width * 0.86));
   const lineHeight = Math.round(fontSize * 1.32);
   const bottomInset = Math.round(input.height * 0.16);
   const filters: string[] = [];
+  const layers: PlaybackDrawLayer[] = [];
   const ordered = [
     ...windows.filter((window) => window.kind === "comment"),
     ...windows.filter((window) => window.kind === "text" || window.kind === "sticker"),
@@ -455,6 +470,11 @@ function drawFilters(windows: OutputWindow[], input: {
         ? subtitleY
         : String(Math.round(input.height * (window.kind === "hook" ? 0.12 : window.kind === "cta" ? 0.22 : window.kind === "text" || window.kind === "sticker" ? 0.30 : 0.40)) + row * lineHeight);
       const preset = window.kind === "subtitle" ? subtitleStyle.preset : "basic";
+      const color = window.kind === "subtitle" && subtitleStyle.color
+        ? `0x${subtitleStyle.color.slice(1)}`
+        : preset === "yellow" || preset === "word" ? "yellow" : preset === "brand" ? "0x7C5CFC" : "white";
+      const box = preset === "box" || preset === "band" || window.kind !== "subtitle";
+      const boxColor = preset === "brand" ? "0x241B4B@0.88" : preset === "band" ? "black@0.82" : "black@0.45";
       filters.push(drawtext({
         text: line,
         fontSize,
@@ -462,20 +482,40 @@ function drawFilters(windows: OutputWindow[], input: {
         startSec: window.startSec,
         endSec: window.endSec,
         fontFile: input.fontFile,
-        fontColor: window.kind === "subtitle" && subtitleStyle.color
-          ? `0x${subtitleStyle.color.slice(1)}`
-          : preset === "yellow" || preset === "word" ? "yellow" : preset === "brand" ? "0x7C5CFC" : "white",
+        fontColor: color,
         x: window.kind === "subtitle" && subtitleStyle.xPercent !== undefined
           ? `w*${fmt(subtitleStyle.xPercent / 100)}-text_w/2`
           : undefined,
-        box: preset === "box" || preset === "band" || window.kind !== "subtitle",
-        boxColor: preset === "brand" ? "0x241B4B@0.88" : preset === "band" ? "black@0.82" : "black@0.45",
+        box,
+        boxColor,
         outline: subtitleStyle.outline,
         animation: window.animation,
       }));
+      layers.push({
+        text: line,
+        startSec: window.startSec,
+        endSec: window.endSec,
+        fontSize,
+        x: window.kind === "subtitle" && subtitleStyle.xPercent !== undefined
+          ? input.width * subtitleStyle.xPercent / 100
+          : input.width / 2,
+        y: window.kind === "subtitle" && subtitleStyle.yPercent !== undefined
+          ? input.height * subtitleStyle.yPercent / 100 - fontSize / 2
+          : window.kind === "subtitle"
+            ? subtitleStyle.position === "top"
+              ? Math.round(input.height * 0.14) + row * lineHeight
+              : subtitleStyle.position === "middle"
+                ? (input.height - fontSize) / 2 + row * lineHeight
+                : input.height - bottomInset - (lines.length - 1 - row) * lineHeight - fontSize
+            : Math.round(input.height * (window.kind === "hook" ? 0.12 : window.kind === "cta" ? 0.22 : window.kind === "text" || window.kind === "sticker" ? 0.30 : 0.40)) + row * lineHeight,
+        color,
+        outline: subtitleStyle.outline,
+        box,
+        boxColor,
+      });
     });
   }
-  return filters;
+  return { filters, layers };
 }
 
 function videoGraph(kept: PlaybackRange[], draws: string[]): string {
@@ -524,6 +564,7 @@ export type PlaybackBurnPlan =
     musicFadeOut: boolean;
     musicDuckUnderVoice: boolean;
     outputHasAudio: boolean;
+    drawLayers: PlaybackDrawLayer[];
     warnings: string[];
   }
   | { ok: false; reason: "nothing_left" | "too_many_layers" };
@@ -556,7 +597,7 @@ export function planPlaybackBurn(input: {
   }
   const outputWindows = expandTypeWindows(shiftedWindows);
   const draws = drawFilters(outputWindows, { ...input, edit: input.edit });
-  if (draws.length > MAX_DRAW_LAYERS) return { ok: false, reason: "too_many_layers" };
+  if (draws.filters.length > MAX_DRAW_LAYERS) return { ok: false, reason: "too_many_layers" };
 
   const keptTexts = [...new Set(outputWindows.map((window) => window.text))];
   const full = coversFullDuration(kept, durationSec);
@@ -566,7 +607,7 @@ export function planPlaybackBurn(input: {
       outputDurationSec,
       keptTexts,
       droppedTexts,
-      videoFilter: draws.join(",") || null,
+      videoFilter: draws.filters.join(",") || null,
       filterComplex: null,
       includeAudio: input.hasAudio,
       voiceRequested: Boolean(input.edit.voice),
@@ -576,10 +617,11 @@ export function planPlaybackBurn(input: {
       musicFadeOut: input.edit.music?.fadeOut ?? false,
       musicDuckUnderVoice: input.edit.music?.duckUnderVoice ?? false,
       outputHasAudio: input.hasAudio || Boolean(input.edit.voice) || Boolean(input.edit.music),
+      drawLayers: draws.layers,
       warnings: source.warnings,
     };
   }
-  const video = videoGraph(kept, draws);
+  const video = videoGraph(kept, draws.filters);
   const filterComplex = input.hasAudio ? `${video};${audioGraph(kept)}` : video;
   return {
     ok: true,
@@ -596,6 +638,7 @@ export function planPlaybackBurn(input: {
     musicFadeOut: input.edit.music?.fadeOut ?? false,
     musicDuckUnderVoice: input.edit.music?.duckUnderVoice ?? false,
     outputHasAudio: input.hasAudio || Boolean(input.edit.voice) || Boolean(input.edit.music),
+    drawLayers: draws.layers,
     warnings: source.warnings,
   };
 }

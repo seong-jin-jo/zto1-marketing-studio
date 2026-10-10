@@ -1,3 +1,15 @@
+## 2026-10-10 영상 편집기 CapCut·Vrew 기본 조작 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| VIDEO-CAPCUT-01 | 1440×900 첫 화면에 실제 영상 미리보기와 영상·자막 타임라인이 함께 보이고 편집 담당 대화창이 작업대를 가리지 않음 | ✅ PASS | preview `(265,422,144×208)`, timeline `(265,646,806×248)`로 둘 다 첫 화면 안이며 대화창 겹침은 `0px²`다. |
+| VIDEO-CAPCUT-02 | 재생헤드 드래그, S 분할, 선택 클립 Delete, 양끝 트림, 순서 드래그, 확대·축소가 같은 편집 계획을 변경함 | ✅ PASS | Playwright가 실제 DOM을 조작했고 저장 결과는 원본 `2.8~3.0초 → 0~1.0초` 두 클립이다. 미리보기는 첫 클립 끝에서 원본 `0.000초`로 실제 건너뛰었다. |
+| VIDEO-CAPCUT-03 | 문장 클릭 이동, 문장 수정, 문장 삭제 구간 컷, 자막 직접 이동, 글꼴·크기·색, 실행취소·다시실행 | ✅ PASS | 실제 저장 JSON에서 `fontFamily=serif`, `sizePercent=120`, `color=#ffd600`, 직접 이동 좌표와 수정 문장을 확인했다. undo·redo 뒤 클립 수 3→2도 브라우저에서 단언했다. |
+| VIDEO-CAPCUT-04 | 실제 `chairman-photo-motion.mp4` 내보내기에 클립 순서·트림·삭제·자막이 반영되고 ffprobe·프레임·자막 크롭이 일치함 | ✅ PASS | 예상 1.200초, ffprobe 1.200초, 차이 0.000초. 기대 프레임 MAD `0.402/0.579`는 삭제 구간 MAD `23.250/21.091`보다 작고 노랑 자막 267픽셀, 활성 자막 레이어 1개다. |
+| VIDEO-CAPCUT-05 | page.route 없이 로컬 Next·PostgreSQL·실제 미디어·로컬 export worker를 Playwright가 조작함 | ✅ PASS | 격리 PostgreSQL schema·RLS, Next dev 3482, 실제 고객 토큰·초안·자동저장, 실제 export worker·서명 다운로드를 사용했다. page.route 0건, 앱 콘솔 오류 0건, 외부 SNS 게시 0건이다. |
+
+종료 증거: `logs/diff/video-editor-capcut-20261010/report.md`, `observations.json`, 캡처 4장, 실제 `exported-video-editor.mp4`. 데이터 포함 편집 화면은 360·390·412·600·700·780·820·900·1000에서 13px 미만 글자 0, 본문 토큰 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다.
+
 ## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

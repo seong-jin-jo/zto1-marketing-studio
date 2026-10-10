@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   emptyVideoEdit,
+  MAX_VIDEO_CLIPS,
   setSubtitles,
+  validateVideoEdit,
   type VideoEdit,
 } from "@/lib/studio/video-edit-contract";
 import {
@@ -9,6 +11,7 @@ import {
   materializeVideoClips,
   outputTimeToSourceTime,
   planPlaybackBurn,
+  playbackHasWork,
   reorderVideoClips,
   splitVideoClip,
   trimVideoClip,
@@ -23,6 +26,11 @@ function baseEdit(): VideoEdit {
 }
 
 describe("영상 클립 편집 계약", () => {
+  it("VIDEO-CAPCUT-00 정상: 자막 없는 영상도 클립 편집이 있으면 렌더 작업으로 판정한다", () => {
+    const edit = splitVideoClip(emptyVideoEdit(), 6, 3);
+    expect(playbackHasWork(edit)).toBe(true);
+  });
+
   it("VIDEO-CAPCUT-01 재생헤드에서 자르면 출력 순서를 보존한 두 클립이 된다", () => {
     const edit = splitVideoClip(baseEdit(), 6, 2.5);
     expect(materializeVideoClips(edit, 6)).toMatchObject([
@@ -93,5 +101,27 @@ describe("영상 클립 편집 계약", () => {
     expect((plan.filterComplex?.match(/text='끝 구간'/g) ?? [])).toHaveLength(1);
     expect(plan.filterComplex).toContain("fontcolor=0xffd600");
     expect(plan.filterComplex).toContain("x=w\*0.42-text_w\/2");
+  });
+
+  it("VIDEO-CAPCUT-05 거절: 중복 id와 클립 개수 상한 초과 입력은 렌더 큐에 들어가기 전에 막는다", () => {
+    const duplicate = {
+      ...emptyVideoEdit(),
+      clips: [
+        { id: "same", order: 0, sourceStartSec: 0, sourceEndSec: 1 },
+        { id: "same", order: 1, sourceStartSec: 1, sourceEndSec: 2 },
+      ],
+    };
+    expect(() => validateVideoEdit(duplicate)).toThrow(/unique/);
+
+    const tooMany = {
+      ...emptyVideoEdit(),
+      clips: Array.from({ length: MAX_VIDEO_CLIPS + 1 }, (_, index) => ({
+        id: `clip-${index}`,
+        order: index,
+        sourceStartSec: index,
+        sourceEndSec: index + 0.5,
+      })),
+    };
+    expect(() => validateVideoEdit(tooMany)).toThrow(/at most/);
   });
 });
