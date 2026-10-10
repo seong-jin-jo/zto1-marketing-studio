@@ -24,7 +24,7 @@ export type VideoSubtitleStyle = {
   position: "top" | "middle" | "bottom";
   sizePercent: number;
   outline: boolean;
-  fontFamily?: "sans" | "serif" | "rounded";
+  fontFamily?: "sans" | "serif" | "round";
   /** ffmpeg drawtext와 브라우저가 함께 쓰는 6자리 RGB 색상. */
   color?: `#${string}`;
   /** 영상 프레임 기준 자막 중심 좌표. 직접 드래그한 위치를 저장한다. */
@@ -350,7 +350,7 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     || !["top", "middle", "bottom"].includes(String(subtitleStyle.position))
     || !isFiniteNumber(subtitleStyle.sizePercent) || subtitleStyle.sizePercent < 70 || subtitleStyle.sizePercent > 160
     || typeof subtitleStyle.outline !== "boolean"
-    || (subtitleStyle.fontFamily !== undefined && !["sans", "serif", "rounded"].includes(String(subtitleStyle.fontFamily)))
+    || (subtitleStyle.fontFamily !== undefined && !["sans", "serif", "round"].includes(String(subtitleStyle.fontFamily)))
     || (subtitleStyle.color !== undefined && (typeof subtitleStyle.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(subtitleStyle.color)))
     || (subtitleStyle.xPercent !== undefined && (!isFiniteNumber(subtitleStyle.xPercent) || subtitleStyle.xPercent < 5 || subtitleStyle.xPercent > 95))
     || (subtitleStyle.yPercent !== undefined && (!isFiniteNumber(subtitleStyle.yPercent) || subtitleStyle.yPercent < 5 || subtitleStyle.yPercent > 95))) {

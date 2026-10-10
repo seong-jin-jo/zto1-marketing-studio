@@ -1312,7 +1312,7 @@ function VideoInsertDrawer({ edit, duration, playhead, sourceFilename, tenantId,
         <div className="space-y-stack" data-video-drawer-subtitle>
           <div className="grid grid-cols-3 gap-stack-tight">{SUBTITLE_PRESET_LABELS.map(([preset, label]) => <Button key={preset} size="sm" variant={(edit.subtitleStyle?.preset ?? "basic") === preset ? "primary" : "secondary"} onClick={() => run((value) => setSubtitleStyle(value, { preset }))}>{label}</Button>)}</div>
           <label className="grid gap-micro text-caption">위치<select value={edit.subtitleStyle?.position ?? "bottom"} onChange={(event) => { const position = event.target.value as "top" | "middle" | "bottom"; run((value) => setSubtitleStyle(value, { position, yPercent: position === "top" ? 18 : position === "middle" ? 50 : 78 })); }} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body"><option value="top">위</option><option value="middle">가운데</option><option value="bottom">아래</option></select></label>
-          <label className="grid gap-micro text-caption">글꼴<select value={edit.subtitleStyle?.fontFamily ?? "sans"} onChange={(event) => run((value) => setSubtitleStyle(value, { fontFamily: event.target.value as "sans" | "serif" | "rounded" }))} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body" data-video-subtitle-font><option value="sans">고딕</option><option value="serif">명조</option><option value="rounded">둥근 고딕</option></select></label>
+          <label className="grid gap-micro text-caption">글꼴<select value={edit.subtitleStyle?.fontFamily ?? "sans"} onChange={(event) => run((value) => setSubtitleStyle(value, { fontFamily: event.target.value as "sans" | "serif" | "round" }))} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body" data-video-subtitle-font><option value="sans">고딕</option><option value="serif">명조</option><option value="round">둥근 고딕</option></select></label>
           <label className="grid gap-micro text-caption">글자 색<input type="color" value={edit.subtitleStyle?.color ?? "#ffffff"} onChange={(event) => run((value) => setSubtitleStyle(value, { color: event.target.value as `#${string}` }))} className="min-h-control-touch w-full rounded-control border border-border bg-surface" data-video-subtitle-color /></label>
           <label className="grid gap-micro text-caption">글자 크기 {edit.subtitleStyle?.sizePercent ?? 100}%<input type="range" min="70" max="160" step="10" value={edit.subtitleStyle?.sizePercent ?? 100} onChange={(event) => run((value) => setSubtitleStyle(value, { sizePercent: Number(event.target.value) }))} /></label>
           <Button size="sm" variant={edit.subtitleStyle?.outline ?? true ? "primary" : "secondary"} aria-pressed={edit.subtitleStyle?.outline ?? true} onClick={() => run((value) => setSubtitleStyle(value, { outline: !(value.subtitleStyle?.outline ?? true) }))}>글자 외곽선</Button>
@@ -1618,9 +1618,9 @@ function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, 
           <TimelineThumbnailFrame key={ratio} src={thumbnailSrc} timeSec={clip.sourceStartSec + (clip.sourceEndSec - clip.sourceStartSec) * ratio} />
         ))}
       </div>
-      <button type="button" aria-label={`${label} 시작점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-r border-border bg-surface/90" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</button>
+      <Button size="sm" variant="secondary" aria-label={`${label} 시작점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize rounded-none border-0 border-r border-border bg-surface/90 p-none" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</Button>
       <span className="relative z-[1] min-w-0 flex-1 truncate rounded-chip bg-player-panel/80 px-micro text-center text-player-text">{label}</span>
-      <button type="button" aria-label={`${label} 끝점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-l border-border bg-surface/90" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</button>
+      <Button size="sm" variant="secondary" aria-label={`${label} 끝점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize rounded-none border-0 border-l border-border bg-surface/90 p-none" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</Button>
     </div>
   );
 }
@@ -1637,6 +1637,8 @@ function TimelineThumbnailFrame({ src, timeSec }: { src: string | null; timeSec:
   }
 
   return src ? (
+    // raw-media-ok: thumbnailSrc는 VideoPlayback이 만료를 감지해 다시 서명한
+    // effectivePreviewUrl과 같은 값이며, 재서명 소유권은 부모 한 곳에 있다.
     <video
       ref={frameRef}
       src={src}

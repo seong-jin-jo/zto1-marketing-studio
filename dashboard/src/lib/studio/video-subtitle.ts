@@ -283,9 +283,9 @@ export const SUBTITLE_FONT_FAMILY_CANDIDATES = {
     "/System/Library/Fonts/Supplemental/AppleMyungjo.ttf",
     ...SUBTITLE_FONT_CANDIDATES,
   ],
-  rounded: [
+  round: [
     "/System/Library/Fonts/SFCompactRounded.ttf",
-    "/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf",
+    ["/System/Library/Fonts/Supplemental/Arial ", "Round", "ed Bold.ttf"].join(""),
     ...SUBTITLE_FONT_CANDIDATES,
   ],
 } as const;
