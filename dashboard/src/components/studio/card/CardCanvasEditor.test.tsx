@@ -258,7 +258,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(text.type === "text" && text.style.font_size).toBe(72);
     fireEvent.change(screen.getByLabelText("글꼴"), { target: { value: "Georgia" } });
     fireEvent.change(screen.getByLabelText("글 배경색"), { target: { value: "#fff2a8" } });
-    fireEvent.click(screen.getByRole("button", { name: "가운데 정렬" }));
+    fireEvent.change(screen.getByLabelText("글 정렬"), { target: { value: "center" } });
     const centered = current.slides[0].elements[0];
     expect(centered.type === "text" && centered.style.align).toBe("center");
     expect(centered.type === "text" && centered.style.font_family).toBe("Georgia");
@@ -281,6 +281,17 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "이 장 삭제" }));
     expect(current.slides).toHaveLength(3);
+  });
+
+  it("R2-04 정상: 자주 쓰는 글 도구는 맥락 툴바에 있고 크기·회전은 접힌 고급 항목에 둔다", () => {
+    render(<CardCanvasEditor deck={deck()} onDeckChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "제목" }));
+    const toolbar = screen.getByRole("toolbar", { name: "제목 도구" });
+    expect(within(toolbar).getByLabelText("글꼴")).toBeInTheDocument();
+    expect(within(toolbar).getByLabelText("글 정렬")).toBeInTheDocument();
+    const details = document.querySelector("[data-card-geometry-details]");
+    expect(details).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("요소 너비")).toBeInTheDocument();
   });
 
   it("CARD-CANVA-03 실제 미디어 목록에서 이미지를 고르면 카드 요소로 추가한다", async () => {

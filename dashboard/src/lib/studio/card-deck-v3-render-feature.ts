@@ -19,6 +19,10 @@ export function cardDeckV3RenderingEnabled(env: FlagEnv = process.env): boolean 
   const serverValue = env.CARD_DECK_V3_RENDER_ENABLED;
   const publicValue = env.NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED;
   const enabled = (value: string | undefined) => value === "1" || value === "true";
+  // 직접 편집과 PNG 렌더 경로가 실사용 검증을 마쳤으므로 기본값은 켠다. 긴급 중지는
+  // 어느 한쪽이라도 명시적으로 0/false를 주면 유지된다. 기본 OFF이면 편집은 되는데
+  // 제품 UI의 내보내기만 막히고, 검증 코드가 렌더 함수를 직접 부르는 우회가 생긴다.
+  if (serverValue === undefined && publicValue === undefined) return true;
   if (serverValue !== undefined && publicValue !== undefined) return enabled(serverValue) && enabled(publicValue);
   return enabled(serverValue ?? publicValue);
 }

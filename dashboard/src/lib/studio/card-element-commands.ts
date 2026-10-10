@@ -483,10 +483,16 @@ export function addPlainCardSlide(deck: CardDeckV3, afterSlideId: string, explic
   if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
   const afterIndex = deck.slides.findIndex((slide) => slide.id === afterSlideId);
   if (afterIndex < 0) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  const source = deck.slides[afterIndex];
+  if (!source || source.base.kind !== "plain" || deck.template !== "plain") throw new RangeError("OPS_NOT_PLAIN_DECK");
+  const slideId = explicitId ?? nextPlainSlideId(deck);
   const slide: CardSlideV3 = {
-    id: explicitId ?? nextPlainSlideId(deck), order: 0, role: "body", content_state: "empty",
-    background: { kind: "solid", color: deck.theme.background as `#${string}` },
-    base: { kind: "plain", lines: [] }, elements: [],
+    ...clone(source),
+    id: slideId,
+    order: 0,
+    role: "body",
+    content_state: "filled",
+    elements: source.elements.map((element, order) => ({ ...clone(element), id: `${slideId}_el_${order + 1}`, z_index: order })),
   };
   return mutatePlainSlides(deck, [...deck.slides.slice(0, afterIndex + 1), slide, ...deck.slides.slice(afterIndex + 1)]);
 }

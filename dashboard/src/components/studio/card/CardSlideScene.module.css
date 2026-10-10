@@ -192,12 +192,15 @@
 
 .text {
   display: flex;
+  box-sizing: border-box;
   align-items: var(--card-text-vertical);
+  min-width: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   background: var(--card-text-background);
   color: var(--card-text-color);
-  font-family: var(--card-text-family);
+  font-family: var(--card-text-family), "Pretendard Variable", sans-serif;
   font-size: var(--card-text-size);
   font-weight: var(--card-text-weight);
   line-height: var(--card-text-leading);
@@ -205,6 +208,8 @@
   text-align: var(--card-text-align);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  word-break: break-word;
+  padding-inline: .5cqw;
 }
 
 .media,

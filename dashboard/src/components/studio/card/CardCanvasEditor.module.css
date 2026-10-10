@@ -32,14 +32,22 @@
 }
 
 .addToolbar { flex-wrap: nowrap; overflow-x: auto; }
-.floatingToolbar {
-  position: sticky;
-  top: var(--stack);
-  z-index: 300;
+.contextToolbar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(calc(var(--control-touch) * 1.5), 1fr));
+  width: min(100%, calc(var(--space-region) * 24));
+  min-width: 0;
+  gap: var(--space-micro);
+}
+.floatingToolbar {
+  position: relative;
+  z-index: 300;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: var(--space-micro);
   box-shadow: none;
 }
+.floatingToolbar > :global(button) { flex: 0 0 auto; white-space: nowrap; }
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
@@ -47,20 +55,20 @@
 .toolbarField,
 .colorField {
   display: inline-flex;
-  min-width: 0;
+  min-width: max-content;
   min-height: var(--control-touch);
   align-items: center;
   gap: var(--space-micro);
   color: var(--text-muted);
   font-size: var(--font-body-sm-size);
+  white-space: nowrap;
 }
 
 .toolbarField select,
 .toolbarField input {
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  min-width: calc(var(--control-touch) * 1.4);
   min-height: var(--control-touch);
-  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--shape-control);
   background: var(--surface-2);
@@ -69,7 +77,32 @@
   font-size: var(--font-body-size);
 }
 
+.fontField select { width: calc(var(--control-touch) * 3.5); }
+.sizeField input { width: calc(var(--control-touch) * 1.5); }
+.alignField select { width: calc(var(--control-touch) * 1.8); }
 .colorField input { width: var(--control-touch); height: var(--control-touch); border: 0; background: transparent; }
+.geometryDetails {
+  justify-self: end;
+  color: var(--text-muted);
+  font-size: var(--font-body-sm-size);
+}
+.geometryDetails summary {
+  min-height: var(--control-touch);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.geometryFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--stack-tight);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  padding: var(--stack-tight);
+  box-shadow: var(--elevation-floating);
+}
 
 .mediaLibrary {
   display: grid;
@@ -156,8 +189,8 @@
   position: relative;
   container-type: inline-size;
   min-width: 0;
-  /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
-  width: min(100%, calc(var(--space-region) * 9.75));
+  /* 448×560: 1440×900 첫 화면에서 카드가 작업 영역의 중심이면서 페이지 줄까지 보인다. */
+  width: min(100%, calc(var(--space-region) * 14));
   margin-inline: auto;
   overflow: clip;
   border: 1px solid var(--border);
@@ -198,6 +231,9 @@
   padding: var(--stack-tight);
   color: var(--text);
   font: inherit;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .resizeHandle,
@@ -263,7 +299,7 @@
 .canvasInspector {
   position: relative;
   z-index: 300;
-  width: min(100%, calc(var(--space-region) * 20));
+  width: min(100%, calc(var(--space-region) * 24));
   box-shadow: var(--elevation-floating);
 }
 
@@ -373,8 +409,8 @@
   .rightPanel { grid-column: auto; }
   .stageColumn { order: -2; }
   .slideStrip { width: 100%; order: initial; }
-  .floatingToolbar { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: clip; }
-  .floatingToolbar > * { min-width: 0; }
+  .contextToolbar { width: 100%; }
+  .floatingToolbar { position: static; overflow-x: auto; }
   .elementList { max-height: none; }
   .toolbarField,
   .elementList h3,
@@ -390,8 +426,18 @@
 }
 
 @media (max-width: 26rem) {
-  .floatingToolbar > * {
-    flex-basis: 100%;
-    width: 100%;
+  .geometryFields { justify-content: flex-start; }
+}
+
+@media (min-width: 64rem) {
+  .floatingToolbar,
+  .floatingToolbar > :global(button),
+  .toolbarField,
+  .toolbarField select,
+  .toolbarField input,
+  .colorField,
+  .colorField input {
+    min-height: calc(var(--control-touch) - var(--stack-tight));
   }
+  .colorField input { height: calc(var(--control-touch) - var(--stack-tight)); }
 }

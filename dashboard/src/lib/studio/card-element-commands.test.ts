@@ -166,6 +166,8 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
       ["slide_added", 1, "body"],
       ["slide_cta", 2, "cta"],
     ]);
+    expect(added.slides[1]).toMatchObject({ content_state: "filled", background: seeded.slides[0].background });
+    expect(added.slides[1].elements[0]).toMatchObject({ id: "slide_added_el_1", type: "shape" });
     const duplicated = duplicatePlainCardSlide(added, "slide_cover", "slide_copy");
     expect(duplicated.slides[1].elements[0]).toMatchObject({ id: "slide_copy_el_1", type: "shape" });
     const moved = movePlainCardSlide(duplicated, "slide_copy", 1);

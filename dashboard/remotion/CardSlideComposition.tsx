@@ -20,9 +20,15 @@ export function CardSlideComposition({ model }: CardSlideCompositionProps) {
       weight: "100 900",
     });
     font.load()
-      .then((loaded) => {
+      .then(async (loaded) => {
         if (canceled) return;
         document.fonts.add(loaded);
+        await document.fonts.load(`700 64px "${CARD_REMOTION_FONT_FAMILY}"`, "캔버스 글꼴 확인 ABC 123");
+        await document.fonts.ready;
+        if (!document.fonts.check(`700 64px "${CARD_REMOTION_FONT_FAMILY}"`, "캔버스 글꼴 확인 ABC 123")) {
+          throw new Error("Pretendard Variable was not resolved after loading");
+        }
+        if (canceled) return;
         setFontReady(true);
         continueRender(fontHandle);
       })
