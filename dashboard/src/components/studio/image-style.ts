@@ -98,7 +98,7 @@ export function paletteToColors(palette?: string): string {
  * 실내 근접 구도와 명시적 무문자 조건을 함께 사용한다. 한쪽만으로는 실생성 결과에서
  * 깨진 가짜 글자를 막지 못했다.
  */
-const NO_TEXT = "purely visual scene, clean minimal composition, plain surfaces, blank unmarked surfaces, natural materials, close interior framing, no text, letters, words, logos, labels, signage, captions, subtitles, or watermarks inside the image";
+const NO_TEXT = "purely visual scene, clean minimal composition, plain surfaces, blank unmarked surfaces, natural materials, close interior framing; the image contains no text";
 
 /**
  * 그림 지시문의 바탕이 될 말을 고른다.

@@ -22,7 +22,7 @@ describe("그림 지시문 조립", () => {
 
   it("LOCAL-REAL-PATH-R3-04 정상: 이미지 안 글자가 없도록 명시하고 편집실 합성을 전제로 한다", () => {
     const out = buildImagePrompt("카페 창가", null);
-    expect(out).toContain("no text, letters, words, logos, labels, signage, captions, subtitles, or watermarks inside the image");
+    expect(out).toContain("the image contains no text");
     expect(out).toContain("plain surfaces");
   });
 

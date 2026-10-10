@@ -173,16 +173,17 @@ async function measureMobileErgonomics(page, width) {
   });
 }
 
-async function waitForRecords(count) {
+async function waitForRecords(platforms) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const rows = fs.existsSync(dryRunLog)
       ? fs.readFileSync(dryRunLog, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line))
       : [];
-    if (rows.length >= count) return rows;
+    const recordedPlatforms = new Set(rows.map((row) => row.platform));
+    if (platforms.every((platform) => recordedPlatforms.has(platform))) return rows;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`드라이런 요청 ${count}건을 제한시간 안에 확인하지 못했습니다.`);
+  throw new Error(`드라이런 채널 ${platforms.length}곳의 요청을 제한시간 안에 확인하지 못했습니다.`);
 }
 
 assert(operatorToken, "DASHBOARD_AUTH_TOKEN이 필요합니다.");
@@ -333,8 +334,15 @@ try {
     const creatorError = await page.locator('[data-testid="tiktok-creator-info-error"]').textContent().catch(() => null);
     throw new Error(`TikTok 공개 범위 UI를 열지 못했습니다. creatorError=${creatorError || "없음"}, console=${consoleErrors.slice(0, 3).join(" | ") || "없음"}`);
   }
-  await tiktokPrivacySelect.selectOption("SELF_ONLY", { timeout: timeoutMs });
-  console.log("STEP TikTok 공개 범위 선택");
+  const privacyBeforeChoice = await tiktokPrivacySelect.inputValue();
+  assert(privacyBeforeChoice === "", `TikTok 공개 범위가 사용자 선택 전에 자동 지정됐습니다: ${privacyBeforeChoice}`);
+  await tiktokPrivacySelect.selectOption("PUBLIC_TO_EVERYONE", { timeout: timeoutMs });
+  assert(await tiktokPrivacySelect.inputValue() === "PUBLIC_TO_EVERYONE", "TikTok 공개 범위 사용자 선택이 유지되지 않았습니다.");
+  const tiktokAiSelect = page.locator('[data-testid="tiktok-ai-generated-select"]');
+  assert(await tiktokAiSelect.inputValue() === "", "TikTok AI 생성 표시가 사용자 선택 전에 자동 지정됐습니다.");
+  await tiktokAiSelect.selectOption("true", { timeout: timeoutMs });
+  assert(await tiktokAiSelect.inputValue() === "true", "TikTok AI 생성 표시 사용자 선택이 유지되지 않았습니다.");
+  console.log("STEP TikTok 공개 범위·AI 생성 표시 사용자 선택 유지 확인");
   for (const label of channelLabels) {
     const checkbox = page.getByRole("checkbox", { name: `${label} 발행`, exact: true });
     await checkbox.waitFor({ state: "visible", timeout: timeoutMs });
@@ -364,7 +372,7 @@ try {
   await publishButton.waitFor({ state: "visible", timeout: timeoutMs });
   assert(await publishButton.isEnabled(), "전체 채널 발행 단추가 활성화되지 않았습니다.");
   await publishButton.click();
-  const records = await waitForRecords(expectedRecordedPlatforms.length);
+  const records = await waitForRecords(expectedRecordedPlatforms);
   await page.getByRole("main").getByText("발행 완료", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
   await page.screenshot({ path: path.join(evidenceDir, "04-publish-dry-run-result.png"), fullPage: false });
   console.log("STEP 13개 채널 드라이런 완료");
@@ -388,6 +396,13 @@ try {
   assert(JSON.stringify(recorded) === JSON.stringify(expected), `드라이런 기록 채널 불일치: ${recorded.join(", ")}`);
   assert(records.every((record) => typeof record.endpoint === "string" && record.endpoint.startsWith("https://")), "외부 API 직전 엔드포인트가 기록되지 않았습니다.");
   assert(records.every((record) => record.body && Object.keys(record.body).length > 0), "채널 요청 본문이 비어 있습니다.");
+  const stepsFor = (platform) => records.filter((record) => record.platform === platform)
+    .sort((left, right) => left.sequence - right.sequence).map((record) => record.step);
+  assert(JSON.stringify(stepsFor("x")) === JSON.stringify(["media.initialize", "media.append", "media.finalize", "post.create"]), "X 미디어 업로드 전체 순서가 기록되지 않았습니다.");
+  assert(JSON.stringify(stepsFor("linkedin")) === JSON.stringify(["asset.register", "asset.upload", "post.create"]), "LinkedIn 자산 등록·업로드·UGC 연결 순서가 기록되지 않았습니다.");
+  assert(JSON.stringify(stepsFor("bluesky")) === JSON.stringify(["session.create", "blob.upload", "post.create"]), "Bluesky blob 업로드·embed 게시 순서가 기록되지 않았습니다.");
+  assert(records.find((record) => record.platform === "facebook")?.endpoint.endsWith("/photos"), "Facebook 이미지가 /photos로 기록되지 않았습니다.");
+  assert(records.find((record) => record.platform === "telegram")?.endpoint.endsWith("/sendPhoto"), "Telegram 이미지가 sendPhoto로 기록되지 않았습니다.");
   const videoRecords = records.filter((record) => ["youtube", "reels", "tiktok"].includes(record.platform));
   assert(videoRecords.length === 3 && videoRecords.every((record) => record.mediaSpec?.bytes > 0 && record.mediaSpec?.codec === "h264"), "영상 3채널의 실제 미디어 규격 기록이 올바르지 않습니다.");
   const imageRecords = records.filter((record) => record.mediaSpec?.path?.endsWith(imageFilename));
