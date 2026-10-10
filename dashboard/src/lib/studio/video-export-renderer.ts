@@ -42,7 +42,11 @@ export async function renderVideoExport(tenantId: string, request: VideoRenderRe
     if (inputBytes <= 0 || inputBytes > MAX_VIDEO_BYTES) throw new Error("VIDEO_SOURCE_SIZE_INVALID");
     const source = await probeRenderedVideo(inputPath);
     if (source.durationSec > MAX_VIDEO_DURATION_SECONDS) throw new Error("VIDEO_TOO_LONG");
-    const fontFile = pickSubtitleFont((candidate) => fs.existsSync(candidate), process.env.SUBTITLE_FONT_FILE);
+    const fontFile = pickSubtitleFont(
+      (candidate) => fs.existsSync(candidate),
+      process.env.SUBTITLE_FONT_FILE,
+      request.edit.subtitleStyle?.fontFamily ?? "sans",
+    );
     if (!fontFile) throw new Error("SUBTITLE_FONT_MISSING");
     const edit = alignPlaybackScript(request.edit, request.lines);
     const plan = planPlaybackBurn({ edit, durationSec: source.durationSec, width: source.width, height: source.height, size: request.subtitleSize, fontFile, hasAudio: source.hasAudio });
