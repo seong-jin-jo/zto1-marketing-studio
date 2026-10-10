@@ -16,8 +16,10 @@ import {
 } from "./video-subtitle";
 import {
   cutRanges,
+  newId,
   validateVideoEdit,
   VideoEditValidationError,
+  type VideoClip,
   type VideoEdit,
 } from "./video-edit-contract";
 
@@ -25,6 +27,84 @@ export type PlaybackRange = { startSec: number; endSec: number };
 
 const MIN_SPAN_SEC = 0.05;
 const MAX_DRAW_LAYERS = 48;
+
+export type PlaybackSegment = PlaybackRange & { clipId: string; outputStartSec: number; outputEndSec: number };
+
+/** 구데이터는 원본 전체 한 클립으로 읽는다. 저장된 배열 순서가 출력 순서다. */
+export function materializeVideoClips(edit: VideoEdit, durationSec: number): VideoClip[] {
+  const duration = finiteDuration(durationSec);
+  const clips = edit.clips?.length
+    ? edit.clips
+    : [{ id: "clip-source", order: 0, sourceStartSec: 0, sourceEndSec: duration }];
+  return clips
+    .map((clip, index) => ({
+      ...clip,
+      order: index,
+      sourceStartSec: Math.max(0, Math.min(duration, clip.sourceStartSec)),
+      sourceEndSec: Math.max(0, Math.min(duration, clip.sourceEndSec)),
+    }))
+    .filter((clip) => clip.sourceEndSec - clip.sourceStartSec >= MIN_SPAN_SEC);
+}
+
+function withClips(edit: VideoEdit, clips: VideoClip[]): VideoEdit {
+  return { ...edit, clips: clips.map((clip, order) => ({ ...clip, order })), revision: edit.revision + 1 };
+}
+
+function clipAtOutputTime(clips: VideoClip[], outputSec: number): { clip: VideoClip; offset: number } | null {
+  let cursor = 0;
+  for (const clip of clips) {
+    const span = clip.sourceEndSec - clip.sourceStartSec;
+    if (outputSec >= cursor && outputSec <= cursor + span) return { clip, offset: outputSec - cursor };
+    cursor += span;
+  }
+  return null;
+}
+
+export function splitVideoClip(edit: VideoEdit, durationSec: number, outputSec: number): VideoEdit {
+  const clips = materializeVideoClips(edit, durationSec);
+  const hit = clipAtOutputTime(clips, outputSec);
+  if (!hit) throw new VideoEditValidationError("clip_split_outside", "재생 위치가 영상 클립 밖입니다.");
+  const sourceSec = hit.clip.sourceStartSec + hit.offset;
+  if (sourceSec - hit.clip.sourceStartSec < MIN_SPAN_SEC || hit.clip.sourceEndSec - sourceSec < MIN_SPAN_SEC) {
+    throw new VideoEditValidationError("clip_split_edge", "클립 양끝에서는 자를 수 없습니다.");
+  }
+  const index = clips.findIndex((clip) => clip.id === hit.clip.id);
+  const next = [
+    ...clips.slice(0, index),
+    { ...hit.clip, id: newId("clip"), sourceEndSec: sourceSec },
+    { ...hit.clip, id: newId("clip"), sourceStartSec: sourceSec },
+    ...clips.slice(index + 1),
+  ];
+  return withClips(edit, next);
+}
+
+export function deleteVideoClips(edit: VideoEdit, ids: string[], durationSec: number): VideoEdit {
+  const selected = new Set(ids);
+  const next = materializeVideoClips(edit, durationSec).filter((clip) => !selected.has(clip.id));
+  if (!next.length) throw new VideoEditValidationError("clip_delete_all", "마지막 영상 클립은 삭제할 수 없습니다.");
+  return withClips(edit, next);
+}
+
+export function trimVideoClip(edit: VideoEdit, id: string, edge: "start" | "end", sourceSec: number, durationSec: number): VideoEdit {
+  const clips = materializeVideoClips(edit, durationSec).map((clip) => {
+    if (clip.id !== id) return clip;
+    const value = Math.max(0, Math.min(durationSec, sourceSec));
+    if (edge === "start" && clip.sourceEndSec - value >= MIN_SPAN_SEC) return { ...clip, sourceStartSec: value };
+    if (edge === "end" && value - clip.sourceStartSec >= MIN_SPAN_SEC) return { ...clip, sourceEndSec: value };
+    throw new VideoEditValidationError("clip_trim_span", "트림 뒤 클립 길이는 0.05초 이상이어야 합니다.");
+  });
+  return withClips(edit, clips);
+}
+
+export function reorderVideoClips(edit: VideoEdit, draggedId: string, targetId: string, durationSec: number): VideoEdit {
+  const clips = materializeVideoClips(edit, durationSec);
+  const from = clips.findIndex((clip) => clip.id === draggedId);
+  const to = clips.findIndex((clip) => clip.id === targetId);
+  if (from < 0 || to < 0 || from === to) return edit;
+  const [moved] = clips.splice(from, 1);
+  clips.splice(to, 0, moved);
+  return withClips(edit, clips);
+}
 
 export function readPlaybackEdit(value: unknown):
   | { ok: true; edit: VideoEdit | null }
@@ -103,15 +183,6 @@ function fmt(value: number): string {
   return String(Math.round(value * 1000) / 1000);
 }
 
-function removedBefore(timeSec: number, cuts: PlaybackRange[]): number {
-  let removed = 0;
-  for (const cut of cuts) {
-    if (cut.endSec <= timeSec) removed += cut.endSec - cut.startSec;
-    else break;
-  }
-  return removed;
-}
-
 function piecesOutsideCuts(startSec: number, endSec: number, cuts: PlaybackRange[]): PlaybackRange[] {
   const pieces: PlaybackRange[] = [];
   let cursor = startSec;
@@ -126,6 +197,43 @@ function piecesOutsideCuts(startSec: number, endSec: number, cuts: PlaybackRange
   }
   if (endSec - cursor >= MIN_SPAN_SEC) pieces.push({ startSec: cursor, endSec });
   return pieces;
+}
+
+/** 클립 순서와 자막 삭제 구간을 함께 적용한 최종 출력 조각이다. */
+export function playbackSegments(edit: VideoEdit, durationSec: number): PlaybackSegment[] {
+  const cuts = mergedCutRanges(durationSec, cutRanges(edit));
+  let cursor = 0;
+  const segments: PlaybackSegment[] = [];
+  for (const clip of materializeVideoClips(edit, durationSec)) {
+    for (const piece of piecesOutsideCuts(clip.sourceStartSec, clip.sourceEndSec, cuts)) {
+      const span = piece.endSec - piece.startSec;
+      segments.push({
+        ...piece,
+        clipId: clip.id,
+        outputStartSec: cursor,
+        outputEndSec: cursor + span,
+      });
+      cursor += span;
+    }
+  }
+  return segments;
+}
+
+export function outputTimeToSourceTime(edit: VideoEdit, durationSec: number, outputSec: number): number {
+  const segments = playbackSegments(edit, durationSec);
+  const bounded = Math.max(0, outputSec);
+  const segment = segments.find((item) => bounded < item.outputEndSec)
+    ?? segments[segments.length - 1];
+  if (!segment) return 0;
+  return Math.min(segment.endSec, segment.startSec + Math.max(0, bounded - segment.outputStartSec));
+}
+
+export function sourceTimeToOutputTime(edit: VideoEdit, durationSec: number, sourceSec: number, preferredClipId?: string): number {
+  const segments = playbackSegments(edit, durationSec);
+  const segment = segments.find((item) => (!preferredClipId || item.clipId === preferredClipId)
+    && sourceSec >= item.startSec && sourceSec <= item.endSec)
+    ?? segments.find((item) => sourceSec >= item.startSec && sourceSec <= item.endSec);
+  return segment ? segment.outputStartSec + sourceSec - segment.startSec : 0;
 }
 
 type DrawKind = "subtitle" | "text" | "sticker" | "hook" | "cta" | "comment";
@@ -228,12 +336,17 @@ function sourceWindows(edit: VideoEdit, durationSec: number): { windows: SourceW
   return { windows, dropped, warnings: normalizedSubtitles.warnings };
 }
 
-function shiftWindow(window: SourceWindow, cuts: PlaybackRange[]): OutputWindow[] {
-  return piecesOutsideCuts(window.startSec, window.endSec, cuts).map((piece) => ({
-    ...window,
-    startSec: piece.startSec - removedBefore(piece.startSec, cuts),
-    endSec: piece.endSec - removedBefore(piece.endSec, cuts),
-  }));
+function shiftWindow(window: SourceWindow, segments: PlaybackSegment[]): OutputWindow[] {
+  return segments.flatMap((segment) => {
+    const startSec = Math.max(window.startSec, segment.startSec);
+    const endSec = Math.min(window.endSec, segment.endSec);
+    if (endSec - startSec < MIN_SPAN_SEC) return [];
+    return [{
+      ...window,
+      startSec: segment.outputStartSec + startSec - segment.startSec,
+      endSec: segment.outputStartSec + endSec - segment.startSec,
+    }];
+  });
 }
 
 /** type 움직임은 렌더 시간 앞부분에 글자 묶음을 순차 노출한다. 레이어 폭증은 12단계로 제한한다. */
@@ -274,6 +387,7 @@ function drawtext(input: {
   endSec: number;
   fontFile?: string | null;
   fontColor?: string;
+  x?: string;
   boxColor?: string;
   box?: boolean;
   outline?: boolean;
@@ -298,7 +412,7 @@ function drawtext(input: {
     `box=${input.box === false ? 0 : 1}`,
     `boxcolor=${input.boxColor ?? "black@0.45"}`,
     `boxborderw=${Math.round(input.fontSize * 0.3)}`,
-    "x=(w-text_w)/2",
+    `x=${input.x ?? "(w-text_w)/2"}`,
     `y=${y}`,
     `enable='between(t,${fmt(input.startSec)},${fmt(input.endSec)})'`,
   ];
@@ -329,11 +443,14 @@ function drawFilters(windows: OutputWindow[], input: {
   for (const window of ordered) {
     const lines = wrapSubtitleLine(window.text, fontSize, maxWidth);
     lines.forEach((line, row) => {
-      const subtitleY = subtitleStyle.position === "top"
+      const customY = subtitleStyle.yPercent !== undefined
+        ? `h*${fmt(subtitleStyle.yPercent / 100)}-text_h/2`
+        : null;
+      const subtitleY = customY ?? (subtitleStyle.position === "top"
         ? String(Math.round(input.height * 0.14) + row * lineHeight)
         : subtitleStyle.position === "middle"
           ? `(h-text_h)/2+${row * lineHeight}`
-          : `h-${bottomInset + (lines.length - 1 - row) * lineHeight}-text_h`;
+          : `h-${bottomInset + (lines.length - 1 - row) * lineHeight}-text_h`);
       const y = window.kind === "subtitle"
         ? subtitleY
         : String(Math.round(input.height * (window.kind === "hook" ? 0.12 : window.kind === "cta" ? 0.22 : window.kind === "text" || window.kind === "sticker" ? 0.30 : 0.40)) + row * lineHeight);
@@ -345,7 +462,12 @@ function drawFilters(windows: OutputWindow[], input: {
         startSec: window.startSec,
         endSec: window.endSec,
         fontFile: input.fontFile,
-        fontColor: preset === "yellow" || preset === "word" ? "yellow" : preset === "brand" ? "0x7C5CFC" : "white",
+        fontColor: window.kind === "subtitle" && subtitleStyle.color
+          ? `0x${subtitleStyle.color.slice(1)}`
+          : preset === "yellow" || preset === "word" ? "yellow" : preset === "brand" ? "0x7C5CFC" : "white",
+        x: window.kind === "subtitle" && subtitleStyle.xPercent !== undefined
+          ? `w*${fmt(subtitleStyle.xPercent / 100)}-text_w/2`
+          : undefined,
         box: preset === "box" || preset === "band" || window.kind !== "subtitle",
         boxColor: preset === "brand" ? "0x241B4B@0.88" : preset === "band" ? "black@0.82" : "black@0.45",
         outline: subtitleStyle.outline,
@@ -416,8 +538,8 @@ export function planPlaybackBurn(input: {
   hasAudio: boolean;
 }): PlaybackBurnPlan {
   const durationSec = finiteDuration(input.durationSec);
-  const cuts = mergedCutRanges(durationSec, cutRanges(input.edit));
-  const kept = keepRanges(durationSec, cuts);
+  const segments = playbackSegments(input.edit, durationSec);
+  const kept = segments.map(({ startSec, endSec }) => ({ startSec, endSec }));
   const outputDurationSec = Number(kept.reduce((sum, range) => sum + (range.endSec - range.startSec), 0).toFixed(3));
   if (outputDurationSec < 0.2) return { ok: false, reason: "nothing_left" };
 
@@ -425,7 +547,7 @@ export function planPlaybackBurn(input: {
   const droppedTexts = [...source.dropped];
   const shiftedWindows: OutputWindow[] = [];
   for (const window of source.windows) {
-    const shifted = shiftWindow(window, cuts);
+    const shifted = shiftWindow(window, segments);
     if (!shifted.length) {
       droppedTexts.push(window.text);
       continue;

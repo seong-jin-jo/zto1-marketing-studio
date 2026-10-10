@@ -24,6 +24,20 @@ export type VideoSubtitleStyle = {
   position: "top" | "middle" | "bottom";
   sizePercent: number;
   outline: boolean;
+  fontFamily?: "sans" | "serif" | "rounded";
+  /** ffmpeg drawtext와 브라우저가 함께 쓰는 6자리 RGB 색상. */
+  color?: `#${string}`;
+  /** 영상 프레임 기준 자막 중심 좌표. 직접 드래그한 위치를 저장한다. */
+  xPercent?: number;
+  yPercent?: number;
+};
+
+/** 원본 영상의 한 구간. 배열 순서가 곧 출력 순서다. */
+export type VideoClip = {
+  id: string;
+  order: number;
+  sourceStartSec: number;
+  sourceEndSec: number;
 };
 
 export type VideoTextSticker = {
@@ -147,6 +161,8 @@ export type VideoEdit = {
   overlays: VideoOverlay[];
   comments: VideoComment[];
   subtitles: SubtitleLine[];
+  /** 구데이터에는 없다. 없으면 원본 전체를 한 클립으로 해석한다. */
+  clips?: VideoClip[];
   voice: VoiceSelection;
   /** v71 S6: 영상 레인 사이의 전환. 인트로/아웃트로가 없으면 해당 값은 저장만 된다. */
   transitions: { introToMain: VideoTransition; mainToOutro: VideoTransition };
@@ -211,6 +227,7 @@ const OVERLAY_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec",
 const COMMENT_ALLOWED_KEYS = new Set(["id", "order", "author", "text", "source", "startSec", "endSec"]);
 const SUBTITLE_ALLOWED_KEYS = new Set(["id", "order", "text", "startSec", "endSec", "cut"]);
 const TEXT_STICKER_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec", "endSec", "animation"]);
+const CLIP_ALLOWED_KEYS = new Set(["id", "order", "sourceStartSec", "sourceEndSec"]);
 const COVER_ALLOWED_KEYS = new Set(["source", "recommendationIndex", "frameSec", "imageUrl", "imageFilename", "textPreset"]);
 
 function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
@@ -314,11 +331,24 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     if (!["none", "fade", "rise", "scale", "type"].includes(String(block.animation))) throw new VideoEditValidationError("text_sticker_animation", `textStickers[${index}].animation is invalid`);
     assertValidRange(block.startSec, block.endSec, `textStickers[${index}]`);
   });
+  const clips = v.clips ?? [];
+  if (!Array.isArray(clips)) throw new VideoEditValidationError("clips_not_array", "videoEdit.clips must be an array");
+  clips.forEach((item, index) => {
+    assertNoUnknownKeys(item as Record<string, unknown>, CLIP_ALLOWED_KEYS, `clips[${index}]`);
+    const clip = item as Partial<VideoClip>;
+    if (typeof clip.id !== "string" || !clip.id) throw new VideoEditValidationError("clip_id", `clips[${index}].id must be set`);
+    assertValidOrder(clip.order, `clips[${index}]`);
+    assertValidRange(clip.sourceStartSec, clip.sourceEndSec, `clips[${index}]`);
+  });
   const subtitleStyle = (v.subtitleStyle ?? { preset: "basic", position: "bottom", sizePercent: 100, outline: true }) as Record<string, unknown>;
   if (!VIDEO_SUBTITLE_STYLE_PRESETS.includes(subtitleStyle.preset as VideoSubtitleStylePreset)
     || !["top", "middle", "bottom"].includes(String(subtitleStyle.position))
     || !isFiniteNumber(subtitleStyle.sizePercent) || subtitleStyle.sizePercent < 70 || subtitleStyle.sizePercent > 160
-    || typeof subtitleStyle.outline !== "boolean") {
+    || typeof subtitleStyle.outline !== "boolean"
+    || (subtitleStyle.fontFamily !== undefined && !["sans", "serif", "rounded"].includes(String(subtitleStyle.fontFamily)))
+    || (subtitleStyle.color !== undefined && (typeof subtitleStyle.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(subtitleStyle.color)))
+    || (subtitleStyle.xPercent !== undefined && (!isFiniteNumber(subtitleStyle.xPercent) || subtitleStyle.xPercent < 5 || subtitleStyle.xPercent > 95))
+    || (subtitleStyle.yPercent !== undefined && (!isFiniteNumber(subtitleStyle.yPercent) || subtitleStyle.yPercent < 5 || subtitleStyle.yPercent > 95))) {
     throw new VideoEditValidationError("subtitle_style", "videoEdit.subtitleStyle is invalid");
   }
   if (v.music !== undefined && v.music !== null) {
@@ -474,6 +504,7 @@ export function normalizeVideoEdit(edit: VideoEdit): VideoEdit {
     ...edit,
     transitions: edit.transitions ?? { introToMain: "cut", mainToOutro: "cut" },
     textStickers: edit.textStickers ?? [],
+    clips: edit.clips ?? [],
     subtitleStyle: edit.subtitleStyle ?? { preset: "basic", position: "bottom", sizePercent: 100, outline: true },
     music: edit.music ?? null,
     safeArea: edit.safeArea ?? false,
