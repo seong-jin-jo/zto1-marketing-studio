@@ -78,6 +78,9 @@ import {
 const PX_PER_SEC = 12;
 const TIMELINE_FALLBACK_WIDTH = 240;
 const TIMELINE_LANE_LABEL_WIDTH = 62;
+// globals.css --video-editor-clip-min-width와 같은 값이다. 짧은 클립이 생기면 블록만
+// 억지로 넓혀 겹치지 않고, 시간축 전체를 확대해 눈금·재생헤드·다른 레인도 함께 맞춘다.
+const TIMELINE_CLIP_MIN_WIDTH_PX = 176;
 
 export function timelinePixelsPerSecond(totalSeconds: number, availableWidth: number): number {
   const safeDuration = Math.max(1, Number.isFinite(totalSeconds) ? totalSeconds : 1);
@@ -1383,7 +1386,14 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
     ...edit.comments.map((c) => c.endSec),
     1,
   );
-  const pxPerSec = timelinePixelsPerSecond(total, availableTrackWidth) * zoom;
+  const shortestClipSpan = clipLayouts.reduce(
+    (minimum, clip) => Math.min(minimum, clip.endSec - clip.startSec),
+    Number.POSITIVE_INFINITY,
+  );
+  const minimumClipScale = !showOriginal && Number.isFinite(shortestClipSpan)
+    ? TIMELINE_CLIP_MIN_WIDTH_PX / shortestClipSpan
+    : 0;
+  const pxPerSec = Math.max(timelinePixelsPerSecond(total, availableTrackWidth) * zoom, minimumClipScale);
   const trackWidth = total * pxPerSec;
   const tickSec = total <= 12 ? 1 : total <= 60 ? 5 : 10;
   const ticks = useMemo(() => {
@@ -1608,9 +1618,9 @@ function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, 
           <TimelineThumbnailFrame key={ratio} src={thumbnailSrc} timeSec={clip.sourceStartSec + (clip.sourceEndSec - clip.sourceStartSec) * ratio} />
         ))}
       </div>
-      <button type="button" aria-label={`${label} 시작점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-r border-border bg-surface/90" onPointerDown={(event) => { event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</button>
+      <button type="button" aria-label={`${label} 시작점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-r border-border bg-surface/90" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</button>
       <span className="relative z-[1] min-w-0 flex-1 truncate rounded-chip bg-player-panel/80 px-micro text-center text-player-text">{label}</span>
-      <button type="button" aria-label={`${label} 끝점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-l border-border bg-surface/90" onPointerDown={(event) => { event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</button>
+      <button type="button" aria-label={`${label} 끝점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-l border-border bg-surface/90" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</button>
     </div>
   );
 }

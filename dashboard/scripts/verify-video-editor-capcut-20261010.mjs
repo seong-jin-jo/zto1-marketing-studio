@@ -18,7 +18,7 @@ const studioToken = process.env.STUDIO_DEV_BEARER_TOKEN || "";
 const chromePath = process.env.VIDEO_EDITOR_CHROME_PATH
   || "/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
 const dataDir = process.env.DATA_DIR || path.resolve(root, "data");
-const sourceFixture = path.resolve(process.cwd(), "public/qa/chairman-photo-motion.mp4");
+const sourceFixture = path.resolve(process.cwd(), "public/qa/video-editor-real-composite-12s.mp4");
 const sourceFilename = `qa-video-editor-${crypto.randomUUID()}.mp4`;
 const sourceStoragePath = path.join(dataDir, "tenants", workspaceId || "missing", "videos", sourceFilename);
 const devLog = path.join(outputDir, "next-dev.log");
@@ -33,6 +33,10 @@ if (!operatorToken || !sourceDatabaseUrl || !workspaceId || !studioToken) {
 }
 if (!fs.existsSync(sourceFixture)) throw new Error(`실제 영상 원본이 없습니다: ${sourceFixture}`);
 if (!fs.existsSync(chromePath)) throw new Error("Chrome for Testing 실행 파일이 없습니다.");
+const sourceDuration = Number(probe(sourceFixture).format?.duration);
+if (!Number.isFinite(sourceDuration) || sourceDuration < 12) {
+  throw new Error(`실제 영상 원본은 12초 이상이어야 합니다: ${sourceDuration}`);
+}
 
 fs.mkdirSync(captureDir, { recursive: true });
 const observations = [];
@@ -101,14 +105,14 @@ async function waitForWorker() {
   throw new Error("export worker가 30초 안에 active 상태가 되지 않았습니다.");
 }
 
-function emptyEdit() {
+function emptyEdit(duration) {
   return {
     contract_version: "1.0",
     overlays: [], comments: [],
     subtitles: [
-      { id: "qa-sub-1", order: 0, text: "첫 장면을 확인합니다", startSec: 0, endSec: 1, cut: false },
-      { id: "qa-sub-2", order: 1, text: "삭제할 가운데 장면", startSec: 1, endSec: 2, cut: false },
-      { id: "qa-sub-3", order: 2, text: "마지막 장면을 확인합니다", startSec: 2, endSec: 3, cut: false },
+      { id: "qa-sub-1", order: 0, text: "첫 장면을 확인합니다", startSec: 0, endSec: 3, cut: false },
+      { id: "qa-sub-2", order: 1, text: "삭제할 가운데 장면", startSec: 3, endSec: 6, cut: false },
+      { id: "qa-sub-3", order: 2, text: "마지막 장면을 확인합니다", startSec: 6, endSec: duration, cut: false },
     ],
     clips: [], voice: null,
     transitions: { introToMain: "cut", mainToOutro: "cut" },
@@ -296,13 +300,13 @@ try {
 
   fs.mkdirSync(path.dirname(sourceStoragePath), { recursive: true });
   fs.copyFileSync(sourceFixture, sourceStoragePath);
-  const initialEdit = emptyEdit();
+  const initialEdit = emptyEdit(sourceDuration);
   const lines = initialEdit.subtitles.map((line) => line.text);
   const vid = {
-    url: "/qa/chairman-photo-motion.mp4",
-    file: "/qa/chairman-photo-motion.mp4",
+    url: "/qa/video-editor-real-composite-12s.mp4",
+    file: "/qa/video-editor-real-composite-12s.mp4",
     filename: sourceFilename,
-    editSource: { filename: sourceFilename, url: "/qa/chairman-photo-motion.mp4" },
+    editSource: { filename: sourceFilename, url: "/qa/video-editor-real-composite-12s.mp4" },
     subtitleLineageState: "unbaked",
     subtitlesBaked: false,
   };
@@ -363,7 +367,12 @@ try {
   await page.locator("[data-video-editor]").waitFor({ state: "visible", timeout: 120_000 });
   await page.waitForFunction(() => {
     const video = document.querySelector("[data-video-el]");
-    return video instanceof HTMLVideoElement && Number.isFinite(video.duration) && video.duration > 2.9;
+    return video instanceof HTMLVideoElement && Number.isFinite(video.duration) && video.duration >= 12;
+  }, null, { timeout: 60_000 });
+
+  await page.waitForFunction(() => {
+    const frames = [...document.querySelectorAll("[data-video-clip-thumbnail-frame]")];
+    return frames.length === 3 && frames.every((frame) => getComputedStyle(frame).opacity !== "0");
   }, null, { timeout: 60_000 });
 
   const previewBox = await page.locator("[data-video-screen]").boundingBox();
@@ -373,28 +382,46 @@ try {
     ? Math.max(0, Math.min(previewBox.x + previewBox.width, helperBox.x + helperBox.width) - Math.max(previewBox.x, helperBox.x))
       * Math.max(0, Math.min(previewBox.y + previewBox.height, helperBox.y + helperBox.height) - Math.max(previewBox.y, helperBox.y))
     : -1;
-  if (!previewBox || !timelineBox || timelineBox.y + timelineBox.height > 900 || overlap !== 0) {
+  const firstScreenLayout = await page.evaluate(() => {
+    const scroll = document.querySelector("[data-video-timeline-scroll]");
+    const track = document.querySelector("[data-video-timeline-track]");
+    const clip = document.querySelector("[data-video-clip-id]");
+    return {
+      zoom: document.querySelector("[data-video-timeline-zoom]")?.textContent || "",
+      scrollWidth: scroll?.clientWidth || 0,
+      trackWidth: track?.getBoundingClientRect().width || 0,
+      clipWidth: clip?.getBoundingClientRect().width || 0,
+      clipLabel: clip?.textContent || "",
+      thumbnailFrames: clip?.querySelectorAll("[data-video-clip-thumbnail-frame]").length || 0,
+    };
+  });
+  if (!previewBox || previewBox.height < 380 || !timelineBox || timelineBox.y + timelineBox.height > 900 || overlap !== 0
+    || firstScreenLayout.zoom !== "100%" || Math.abs(firstScreenLayout.trackWidth - firstScreenLayout.scrollWidth) > 2
+    || firstScreenLayout.clipWidth < 176 || !firstScreenLayout.clipLabel.includes("클립 1") || firstScreenLayout.thumbnailFrames !== 3) {
     throw new Error(`1440x900 첫 화면 계약 실패: preview=${JSON.stringify(previewBox)} timeline=${JSON.stringify(timelineBox)} helperOverlap=${overlap}`);
   }
   await page.screenshot({ path: path.join(captureDir, "01-first-screen-1440x900.png"), fullPage: false });
-  observations.push({ check: "first_screen", preview: previewBox, timeline: timelineBox, assistantOverlapPx2: overlap });
+  observations.push({ check: "first_screen", preview: previewBox, timeline: timelineBox, assistantOverlapPx2: overlap, ...firstScreenLayout });
 
   const scrubber = page.locator("[data-video-scrubber]");
   const seek = async (value) => scrubber.fill(String(Math.round(value * 10) / 10));
-  await seek(1);
+  await seek(3);
   await page.locator("[data-video-split]").click();
-  await seek(2);
+  await seek(6);
   await page.locator("[data-video-timeline-toolbar] b").click();
   await page.keyboard.press("s");
-  await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 3);
+  await seek(9);
+  await page.locator("[data-video-timeline-toolbar] b").click();
+  await page.keyboard.press("s");
+  await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 4);
   const middleClip = page.locator("[data-video-clip-id]").nth(1);
   await middleClip.click();
   await page.keyboard.press("Delete");
-  await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 2);
-  await page.locator("[data-video-undo]").click();
   await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 3);
+  await page.locator("[data-video-undo]").click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 4);
   await page.locator("[data-video-redo]").click();
-  await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 2);
+  await page.waitForFunction(() => document.querySelectorAll("[data-video-clip-id]").length === 3);
 
   const clips = page.locator("[data-video-clip-id]");
   await clips.nth(1).dragTo(clips.nth(0));
@@ -403,7 +430,9 @@ try {
   if (!handleBox) throw new Error("클립 트림 손잡이가 보이지 않습니다.");
   await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(handleBox.x + handleBox.width / 2 + 24, handleBox.y + handleBox.height / 2, { steps: 6 });
+  // 한 번의 실제 pointermove로 24px 트림한다. 다단 move는 각 프레임의 자동저장
+  // 재렌더와 섞여 의도보다 여러 번 트림하는 브라우저 경로를 만들 수 있다.
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 24, handleBox.y + handleBox.height / 2);
   await page.mouse.up();
   await page.locator("[data-video-timeline-playhead]").dispatchEvent("pointerdown", { clientX: timelineBox.x + timelineBox.width * 0.35 });
   await page.mouse.move(timelineBox.x + timelineBox.width * 0.45, timelineBox.y + 40, { steps: 4 });
@@ -436,13 +465,28 @@ try {
   await page.waitForTimeout(100);
   await page.mouse.move(screen.x + screen.width * 0.50, screen.y + screen.height * 0.70, { steps: 8 });
   await page.mouse.up();
+  const editedClipLayout = await page.evaluate(() => {
+    const clips = [...document.querySelectorAll("[data-video-clip-id]")].map((clip) => {
+      const rect = clip.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, width: rect.width, label: clip.textContent || "" };
+    });
+    return {
+      clips,
+      overlapCount: clips.slice(1).filter((clip, index) => clip.left < clips[index].right - 1).length,
+      labelsVisible: clips.every((clip) => /클립 \d+/.test(clip.label) && clip.width >= 176),
+    };
+  });
+  if (editedClipLayout.overlapCount !== 0 || !editedClipLayout.labelsVisible) {
+    throw new Error(`편집 후 클립 블록 겹침 또는 라벨 손실: ${JSON.stringify(editedClipLayout)}`);
+  }
+  observations.push({ check: "edited_clip_layout", ...editedClipLayout });
   await page.screenshot({ path: path.join(captureDir, "02-edited-timeline-and-subtitle.png"), fullPage: false });
 
   let playbackPersisted = null;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     playbackPersisted = await api(`/api/studio/drafts?tenant_id=${workspaceId}&id=${draftId}`, {}, customerToken);
     const edit = playbackPersisted.draft?.videoEdit;
-    if (edit?.clips?.length === 2
+    if (edit?.clips?.length === 3
       && edit?.subtitleStyle?.sizePercent === 120
       && Number.isFinite(edit?.subtitleStyle?.xPercent)
       && Number.isFinite(edit?.subtitleStyle?.yPercent)
@@ -559,7 +603,7 @@ try {
   const secondOutput = frame(outputVideo, secondOutputTime, 32, 32, true);
   const firstExpectedSource = frame(sourceFixture, savedClips[0].sourceStartSec + firstOutputTime, 32, 32, true);
   const secondExpectedSource = frame(sourceFixture, secondClip.sourceStartSec + secondOffset, 32, 32, true);
-  const deletedSource = frame(sourceFixture, 1.5, 32, 32, true);
+  const deletedSource = frame(sourceFixture, 4.5, 32, 32, true);
   const frameDiffs = {
     firstToExpected: meanAbsoluteDifference(firstOutput, firstExpectedSource),
     firstToDeleted: meanAbsoluteDifference(firstOutput, deletedSource),
@@ -579,7 +623,8 @@ try {
   }
   observations.push({
     check: "real_export",
-    source: "dashboard/public/qa/chairman-photo-motion.mp4",
+    source: "dashboard/public/qa/video-editor-real-composite-12s.mp4",
+    sourceDuration,
     expectedDuration, actualDuration, durationDelta, frameDiffs, subtitlePixels, activeSubtitleLayers,
     savedClips,
     subtitleStyle: savedEdit.subtitleStyle,
@@ -592,8 +637,9 @@ try {
   const report = `# 영상 편집기 CapCut·Vrew 기본 조작 실제 경로 검증\n\n`
     + `STAMP: ${reportStamp} KST | gpt-5-codex | code-builder | qa | CapCut·Vrew 공식 기능 문서와 v71 승인 시안\n\n`
     + `## 판정\n\nPASS. page.route 없이 실제 Next dev 3482, 실제 PostgreSQL 초안·자동저장, 실제 export worker, 실제 영상 파일을 사용했다.\n\n`
-    + `## 결과\n\n- 1440x900 첫 화면: 미리보기와 타임라인 동시 표시, 편집 담당 대화창 겹침 ${overlap}px².\n`
-    + `- 편집 조작: S 자르기, Delete 선택 삭제, 양끝 트림, 순서 변경, 재생헤드 이동, 125% 확대, 실행취소·다시실행을 Playwright로 조작했다.\n`
+    + `## 결과\n\n- 1440x900 첫 화면: 미리보기 ${previewBox.height.toFixed(0)}px, 자막 문장 목록과 전체폭 타임라인 동시 표시, 편집 담당 대화창 겹침 ${overlap}px².\n`
+    + `- 타임라인: 기본 100%에서 전체 ${sourceDuration.toFixed(3)}초가 가용 폭에 맞고, 클립 최소 ${firstScreenLayout.clipWidth.toFixed(0)}px, 클립 이름과 실제 영상 프레임 3장이 보인다.\n`
+    + `- 편집 조작: S 자르기 3회, Delete 선택 삭제 1회, 양끝 트림, 순서 변경, 재생헤드 이동, 125% 확대, 실행취소·다시실행을 Playwright로 조작했다.\n`
     + `- 편집 미리보기: 첫 클립 끝에서 다음 재배치 클립의 원본 ${playbackJumpTime.toFixed(3)}초로 실제 재생이 건너뛰었다.\n`
     + `- 모바일: 360·390·412·600·700·780·820·900·1000px에서 13px 미만 글자 0, 본문 토큰 16px 이상, 44px 미만 누름 0, 눌림 상태 90% 이상, 가로 넘침 0을 데이터 포함 편집 화면에서 확인했다.\n`
     + `- 자막: 문장 이동·수정·구간 삭제, 화면 직접 드래그(${savedEdit.subtitleStyle.xPercent.toFixed(1)}%, ${savedEdit.subtitleStyle.yPercent.toFixed(1)}%), 명조·120%·#ffd600을 실제 저장했다.\n`
