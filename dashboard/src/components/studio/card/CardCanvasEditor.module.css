@@ -33,10 +33,14 @@
 
 .addToolbar { flex-wrap: nowrap; overflow-x: auto; }
 .contextToolbar {
+  position: relative;
+  z-index: 400;
   display: grid;
-  width: min(100%, calc(var(--space-region) * 24));
+  width: 100%;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-micro);
+  align-items: start;
 }
 .floatingToolbar {
   position: relative;
@@ -77,9 +81,9 @@
   font-size: var(--font-body-size);
 }
 
-.fontField select { width: calc(var(--control-touch) * 3.5); }
+.fontField select { width: calc(var(--control-touch) * 5); }
 .sizeField input { width: calc(var(--control-touch) * 1.5); }
-.alignField select { width: calc(var(--control-touch) * 1.8); }
+.alignField select { width: calc(var(--control-touch) * 3.25); }
 .colorField input { width: var(--control-touch); height: var(--control-touch); border: 0; background: transparent; }
 .geometryDetails {
   justify-self: end;
@@ -92,6 +96,10 @@
   white-space: nowrap;
 }
 .geometryFields {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 350;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -160,7 +168,7 @@
 .pageActions { max-width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; }
 .pageThumbnail {
   position: relative;
-  flex: 0 0 calc(var(--control-touch) * 1.55);
+  flex: 0 0 calc(var(--control-touch) * 1.25);
   min-width: var(--control-touch);
   border: 2px solid transparent;
   border-radius: var(--shape-control);
@@ -189,8 +197,8 @@
   position: relative;
   container-type: inline-size;
   min-width: 0;
-  /* 448×560: 1440×900 첫 화면에서 카드가 작업 영역의 중심이면서 페이지 줄까지 보인다. */
-  width: min(100%, calc(var(--space-region) * 14));
+  /* 456×570: 테두리·부분 픽셀 반올림 뒤에도 1440×900에서 실측 높이 560px 이상이다. */
+  width: min(100%, calc(var(--space-region) * 14 + var(--stack-tight)));
   margin-inline: auto;
   overflow: clip;
   border: 1px solid var(--border);
@@ -309,7 +317,7 @@
   border: 1px solid var(--border);
   border-radius: var(--shape-control);
   background: var(--surface-2);
-  overflow: clip;
+  overflow: visible;
 }
 
 .inspectorDetails .floatingToolbar {
@@ -408,7 +416,7 @@
   }
   .rightPanel { grid-column: auto; }
   .stageColumn { order: -2; }
-  .slideStrip { width: 100%; order: initial; }
+  .slideStrip { width: 100%; grid-template-columns: minmax(0, 1fr); order: initial; }
   .contextToolbar { width: 100%; }
   .floatingToolbar { position: static; overflow-x: auto; }
   .elementList { max-height: none; }
@@ -426,7 +434,7 @@
 }
 
 @media (max-width: 26rem) {
-  .geometryFields { justify-content: flex-start; }
+  .geometryFields { left: 0; right: auto; justify-content: flex-start; }
 }
 
 @media (min-width: 64rem) {

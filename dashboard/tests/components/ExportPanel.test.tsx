@@ -61,6 +61,62 @@ afterEach(() => {
 });
 
 describe("S4 ExportPanel 계약", () => {
+  it("R2-01 정상: 성공한 카드 PNG를 제품 UI 다운로드 버튼으로 받는다", async () => {
+    const artifactUrl = "/api/images/deliver/signed-card";
+    const fetchMock = vi.fn((url: string | URL | Request) => {
+      const target = String(url);
+      if (target.includes("/latest")) return response(latest({
+        latest_export: { export_id: EXPORT_ID, status: "succeeded", source_revision: 7, source_hash: HASH, finished_at: "2026-10-10T00:00:00.000Z" },
+        is_latest: true,
+        blocker: null,
+      }));
+      if (target === artifactUrl) return Promise.resolve({ ok: true, blob: async () => new Blob(["png"], { type: "image/png" }) } as Response);
+      return response(job({
+        status: "succeeded",
+        progress: { completed: 1, total: 1 },
+        items: [{ item_key: "slide-1", ordinal: 0, status: "succeeded", attempt_count: 1, artifact_url: artifactUrl }],
+        finished_at: "2026-10-10T00:00:00.000Z",
+      }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const objectUrl = vi.fn(() => "blob:card-export");
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: objectUrl });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrl });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<ExportPanel {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: "1장 PNG 다운로드" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(artifactUrl, expect.objectContaining({ cache: "no-store" }));
+      expect(objectUrl).toHaveBeenCalled();
+      expect(click).toHaveBeenCalled();
+    });
+  });
+
+  it("R2-01 거절: PNG 응답이 실패하면 성공처럼 넘기지 않고 오류를 표시한다", async () => {
+    const artifactUrl = "/api/images/deliver/broken-card";
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
+      const target = String(url);
+      if (target.includes("/latest")) return response(latest({
+        latest_export: { export_id: EXPORT_ID, status: "succeeded", source_revision: 7, source_hash: HASH, finished_at: "2026-10-10T00:00:00.000Z" },
+        is_latest: true,
+        blocker: null,
+      }));
+      if (target === artifactUrl) return response({ error: "gone" }, 404);
+      return response(job({
+        status: "succeeded",
+        progress: { completed: 1, total: 1 },
+        items: [{ item_key: "slide-1", ordinal: 0, status: "succeeded", attempt_count: 1, artifact_url: artifactUrl }],
+      }));
+    }));
+
+    render(<ExportPanel {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: "1장 PNG 다운로드" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("1장 PNG를 내려받지 못했습니다.");
+  });
+
   it("S4-AC1 정상: 최초 내보내기는 최신 revision·hash로 접수하고 새 job을 표시한다", async () => {
     const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
       const target = String(url);

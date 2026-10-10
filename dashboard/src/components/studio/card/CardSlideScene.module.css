@@ -209,7 +209,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-  padding-inline: .5cqw;
+  padding-inline: 1.5cqw;
 }
 
 .media,

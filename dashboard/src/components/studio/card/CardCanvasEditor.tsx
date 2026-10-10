@@ -908,8 +908,7 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
                 <span>{slide.order + 1}</span>
               </button>)}
             </div>
-          </nav>
-          <div className={styles.pageActions} role="toolbar" aria-label={workingDeck.template === "chat_bubble" ? "카톡 장 편집 도구" : "카드 페이지 편집 도구"}>
+            <div className={styles.pageActions} role="toolbar" aria-label={workingDeck.template === "chat_bubble" ? "카톡 장 편집 도구" : "카드 페이지 편집 도구"}>
               <Button size="sm" variant="secondary" disabled={workingDeck.slides.length >= 11 || (workingDeck.template === "chat_bubble" && activeSlide.role === "cta")} onClick={addPage}>새 장 추가</Button>
               <Button size="sm" variant="secondary" disabled={workingDeck.slides.length >= 11 || (workingDeck.template === "chat_bubble" && activeSlide.role !== "body")} onClick={duplicatePage}>이 장 복제</Button>
               <Button size="sm" variant="secondary" disabled={activeSlide.order === 0 || (workingDeck.template === "chat_bubble" && (activeSlide.role !== "body" || workingDeck.slides[activeSlide.order - 1]?.role !== "body"))} onClick={() => movePage(-1)}>장 앞으로</Button>
@@ -917,7 +916,8 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
               <Button size="sm" variant="secondary" disabled={workingDeck.template === "chat_bubble" ? activeSlide.role !== "body" || workingDeck.slides.length <= 7 : workingDeck.slides.length <= 2} onClick={deletePage}>이 장 삭제</Button>
               {workingDeck.template === "chat_bubble" && (activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
               {workingDeck.template === "chat_bubble" && (activeSlide.role === "cover" || activeSlide.role === "cta") && activeSlide.background.kind === "image" ? <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => clearChatSlideBackgroundImage(current, activeSlide.id))}>사진 빼기</Button> : null}
-          </div>
+            </div>
+          </nav>
         </div>
         <aside className={styles.rightPanel} data-card-right-panel>
           {activeSlide.base.kind === "chat_bubble" && activeSlide.role === "cover" ? (

@@ -139,9 +139,9 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
 
     const toolbar = screen.getByRole("toolbar", { name: "카톡 장 편집 도구" });
-    const stageColumn = toolbar.parentElement;
+    const stageColumn = toolbar.closest("[data-card-stage-column]");
     expect(stageColumn).toHaveAttribute("data-card-stage-column");
-    expect(within(stageColumn!).getByLabelText("카드 편집 스테이지")).toBeInTheDocument();
+    expect(within(stageColumn as HTMLElement).getByLabelText("카드 편집 스테이지")).toBeInTheDocument();
     expect(document.querySelector("[data-card-right-panel]")).toBeInTheDocument();
   });
 

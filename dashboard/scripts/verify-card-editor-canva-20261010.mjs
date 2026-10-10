@@ -13,11 +13,10 @@ const baseUrl = process.env.CARD_CANVA_BASE_URL || "http://localhost:3481";
 const outputDir = process.env.CARD_CANVA_OUTPUT_DIR || path.resolve(process.cwd(), "../logs/diff/card-editor-canva-20261010");
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("실제 PostgreSQL 검증에는 DATABASE_URL이 필요합니다.");
+process.env.OSMU_PUBLIC_URL = baseUrl;
 
 const jiti = createJiti(import.meta.url, { alias: { "@": path.resolve("src") } });
 const { applyGeneratedImageBackground, createPlainCardDeckV3 } = await jiti.import("../src/lib/studio/card-element-commands.ts");
-const { cardSlideRenderModel } = await jiti.import("../src/lib/studio/card-render-model.ts");
-const { renderCardSlidePng } = await jiti.import("../src/lib/studio/card-slide-render.ts");
 const { mediaStore } = await jiti.import("../src/lib/media-store.ts");
 
 const workspaceId = "78101010-1010-4010-8010-101010101010";
@@ -81,6 +80,39 @@ async function comparePng(leftPath, rightPath) {
     changedPixels,
     changedPixelRatio: changedPixels / (left.info.width * left.info.height),
   };
+}
+
+async function comparePngRegion(leftPath, rightPath, region) {
+  const leftRegion = await sharp(leftPath).extract(region).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const rightRegion = await sharp(rightPath).extract(region).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let changedPixels = 0;
+  for (let offset = 0; offset < leftRegion.data.length; offset += 4) {
+    const delta = Math.max(
+      Math.abs(leftRegion.data[offset] - rightRegion.data[offset]),
+      Math.abs(leftRegion.data[offset + 1] - rightRegion.data[offset + 1]),
+      Math.abs(leftRegion.data[offset + 2] - rightRegion.data[offset + 2]),
+      Math.abs(leftRegion.data[offset + 3] - rightRegion.data[offset + 3]),
+    );
+    if (delta > 8) changedPixels += 1;
+  }
+  return { ...region, changedPixels, changedPixelRatio: changedPixels / (region.width * region.height) };
+}
+
+async function waitForExportWorker(timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const [job] = await admin`
+      SELECT id,status,total_items,succeeded_items,failed_items
+      FROM studio_export_jobs
+      WHERE tenant_id=${workspaceId} AND draft_id=${draftId}
+      ORDER BY created_at DESC LIMIT 1`;
+    if (job?.status === "succeeded") return Number(job.succeeded_items);
+    if (job?.status === "failed" || job?.status === "partially_failed") {
+      throw new Error(`실제 내보내기 워커가 실패했습니다: ${job.status}, 실패 ${job.failed_items}장`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("실제 내보내기 워커가 120초 안에 PNG를 만들지 못했습니다.");
 }
 
 async function drag(page, locator, dx, dy, modifiers = []) {
@@ -154,6 +186,9 @@ page.on("console", (message) => { if (message.type() === "error") consoleErrors.
 page.on("requestfailed", (request) => {
   const failure = request.failure()?.errorText ?? "failed";
   if (failure === "net::ERR_ABORTED" && (request.url().includes("/__nextjs_font/") || request.url().includes("/api/images/deliver/"))) return;
+  if (failure === "net::ERR_ABORTED"
+    && request.method() === "GET"
+    && request.url().includes(`/api/studio/drafts/${draftId}/exports/latest`)) return;
   failedRequests.push(`${request.method()} ${request.url()} ${failure}`);
 });
 
@@ -202,15 +237,15 @@ try {
   await directEditor.press("Tab");
   await waitForDeck((deck) => deck.slides[0].elements.some((element) => element.id === textId && element.text === "캔버스 위에서 바로 고친 문장"), "직접 글 편집이 저장되지 않았습니다.");
 
-  await page.getByLabel("글꼴").selectOption("Georgia");
+  await page.getByLabel("글꼴").selectOption("Pretendard Variable");
   await page.getByLabel("글자 크기").fill("70");
   await page.getByRole("button", { name: "굵게" }).click();
   await page.getByLabel("글자 색").fill("#17324d");
   await page.getByLabel("글 배경색").fill("#fff2a8");
-  await page.getByRole("button", { name: "가운데 정렬" }).click();
+  await page.getByLabel("글 정렬").selectOption("center");
   const styledDeck = await waitForDeck((deck) => {
     const element = deck.slides[0].elements.find((candidate) => candidate.id === textId);
-    return element?.type === "text" && element.style.font_family === "Georgia" && element.style.font_size === 70
+    return element?.type === "text" && element.style.font_family === "Pretendard Variable" && element.style.font_size === 70
       && element.style.color.toLowerCase() === "#17324d" && element.style.background_color?.toLowerCase() === "#fff2a8"
       && element.style.align === "center";
   }, "글 도구 변경이 실제 DB에 모두 저장되지 않았습니다.");
@@ -240,6 +275,7 @@ try {
   await waitForDeck((deck) => deck.slides[0].elements.filter((element) => element.type === "shape").length === 1, "Delete 삭제가 저장되지 않았습니다.");
 
   await shapeSelection.click();
+  await page.locator("[data-card-geometry-details] summary").click();
   await page.getByRole("button", { name: "맨 뒤로" }).click();
   await waitForDeck((deck) => deck.slides[0].elements.find((element) => element.id === shape.id)?.z_index === 0, "레이어 맨 뒤 이동이 저장되지 않았습니다.");
   await page.getByRole("button", { name: "앞으로 한 층" }).click();
@@ -250,10 +286,13 @@ try {
   await waitForDeck((deck) => deck.revision !== layeredDeck.revision || deck.slides[0].elements.find((element) => element.id === shape.id)?.z_index !== layeredDeck.slides[0].elements.find((element) => element.id === shape.id)?.z_index, "실행 취소가 저장되지 않았습니다.");
   await page.getByRole("button", { name: "다시 실행" }).click();
   await waitForDeck((deck) => deck.slides[0].elements.find((element) => element.id === shape.id)?.z_index === deck.slides[0].elements.length - 1, "다시 실행이 저장되지 않았습니다.");
+  await page.locator("[data-card-geometry-details] summary").click();
 
   await selection.click();
+  await page.locator("[data-card-geometry-details] summary").click();
   await page.getByLabel("요소 각도").fill("0");
   await waitForDeck((deck) => deck.slides[0].elements.find((element) => element.id === textId)?.rotation === 0, "스냅 검증용 각도 초기화가 저장되지 않았습니다.");
+  await page.locator("[data-card-geometry-details] summary").click();
   await selection.waitFor({ state: "visible" });
   const stageBox = await page.locator("[data-card-stage]").boundingBox();
   const selectionBox = await selection.boundingBox();
@@ -301,6 +340,13 @@ try {
   await waitForDeck((deck) => deck.slides.find((slide) => slide.id === movedPageId)?.order === movedPageOrder - 1, "카드 페이지 순서변경이 저장되지 않았습니다.");
   await page.getByRole("button", { name: "이 장 삭제" }).click();
   await waitForDeck((deck) => deck.slides.length === pageCountBefore + 1, "카드 페이지 삭제가 저장되지 않았습니다.");
+  const thumbnailContents = await page.locator("[data-card-slide] [data-card-slide-scene]").evaluateAll((scenes) => scenes.map((scene) => ({
+    text: scene.textContent?.trim() ?? "",
+    images: scene.querySelectorAll("img").length,
+  })));
+  if (thumbnailContents.length < 3 || !thumbnailContents[1]?.text || thumbnailContents.some((content) => !content.text && content.images === 0)) {
+    throw new Error(`실제 장 내용이 없는 페이지 썸네일이 있습니다: ${JSON.stringify(thumbnailContents)}`);
+  }
   await page.getByRole("button", { name: "1장" }).click();
   await selection.click();
 
@@ -310,7 +356,7 @@ try {
   });
   await page.waitForTimeout(100);
   const addToolbarRect = await page.getByRole("toolbar", { name: "카드 요소 추가" }).boundingBox();
-  const textToolbarRect = await page.locator("[data-card-element-toolbar]").boundingBox();
+  const textToolbarRect = await page.locator('[data-card-element-toolbar] [role="toolbar"]').boundingBox();
   const stageRect = await page.locator("[data-card-stage]").boundingBox();
   const pageStripRect = await page.locator("[data-card-page-strip]").boundingBox();
   const pageActionsRect = await page.getByRole("toolbar", { name: "카드 페이지 편집 도구" }).boundingBox();
@@ -319,6 +365,53 @@ try {
   const overlaps = !(stageRect.x + stageRect.width <= assistantRect.x || assistantRect.x + assistantRect.width <= stageRect.x
     || stageRect.y + stageRect.height <= assistantRect.y || assistantRect.y + assistantRect.height <= stageRect.y);
   if (overlaps) throw new Error("편집 담당 대화창이 카드 캔버스를 가립니다.");
+  if (stageRect.height < 560) throw new Error(`1440x900 카드 캔버스 높이가 560px보다 작습니다: ${stageRect.height}`);
+  if (textToolbarRect.height > 56) throw new Error(`선택 맥락 툴바가 한 줄 높이를 넘었습니다: ${textToolbarRect.height}`);
+  const clippedToolbarValues = await page.locator('[data-card-element-toolbar] [role="toolbar"] input, [data-card-element-toolbar] [role="toolbar"] select').evaluateAll((controls) => controls.flatMap((control) => {
+    const element = control;
+    const rect = element.getBoundingClientRect();
+    const parentRect = element.parentElement?.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const selectedText = element instanceof HTMLSelectElement ? element.selectedOptions[0]?.text ?? "" : "";
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (context) context.font = style.font;
+    const selectedTextClipped = element instanceof HTMLSelectElement
+      && Boolean(selectedText)
+      && (context?.measureText(selectedText).width ?? 0) + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 28 > element.clientWidth;
+    const clipped = element.scrollWidth > element.clientWidth + 1
+      || rect.width <= 0
+      || selectedTextClipped
+      || (parentRect ? rect.left < parentRect.left - 1 || rect.right > parentRect.right + 1 : false);
+    return clipped ? [element.getAttribute("aria-label") || element.tagName] : [];
+  }));
+  if (clippedToolbarValues.length) throw new Error(`맥락 툴바에서 잘린 값이 있습니다: ${clippedToolbarValues.join(", ")}`);
+  if (await page.locator("[data-card-geometry-details]").getAttribute("open") !== null) throw new Error("너비·높이·각도 고급 항목이 기본으로 펼쳐져 있습니다.");
+  const textBoxFits = await page.locator(`[data-card-stage] > [data-card-slide-scene] [data-card-element="${textId}"]`).evaluate((element) => {
+    const text = element.querySelector("span");
+    if (!(text instanceof HTMLElement)) return false;
+    const outer = element.getBoundingClientRect();
+    const inner = text.getBoundingClientRect();
+    const style = getComputedStyle(text);
+    return inner.left >= outer.left - 1 && inner.right <= outer.right + 1
+      && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1
+      && text.scrollWidth <= text.clientWidth + 1 && text.scrollHeight <= text.clientHeight + 1
+      && parseFloat(style.paddingLeft) >= 4 && parseFloat(style.paddingRight) >= 4;
+  });
+  if (!textBoxFits) throw new Error("글자가 글 상자 안에서 줄바꿈되지 않거나 상자 밖으로 잘렸습니다.");
+  const backgroundPhoto = await page.locator("[data-card-stage] > [data-card-slide-scene] img").first().evaluate((image) => {
+    if (!(image instanceof HTMLImageElement)) throw new Error("배경 사진 요소가 아닙니다.");
+    return {
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+      renderedWidth: image.getBoundingClientRect().width,
+      renderedHeight: image.getBoundingClientRect().height,
+      objectFit: getComputedStyle(image).objectFit,
+    };
+  });
+  if (backgroundPhoto.objectFit !== "cover" || backgroundPhoto.naturalWidth < backgroundPhoto.renderedWidth || backgroundPhoto.naturalHeight < backgroundPhoto.renderedHeight) {
+    throw new Error(`배경 사진이 cover가 아니거나 화면에서 원본 이상으로 확대됩니다: ${JSON.stringify(backgroundPhoto)}`);
+  }
   const coreRects = { addToolbarRect, textToolbarRect, stageRect, pageStripRect, pageActionsRect };
   const outside = Object.entries(coreRects).filter(([, rect]) => rect.y < 0 || rect.y + rect.height > 900);
   if (outside.length) throw new Error(`필수 카드 편집 도구가 1440x900 첫 화면을 벗어났습니다: ${JSON.stringify(outside)}`);
@@ -344,6 +437,31 @@ try {
   if (mobileOverflow.scrollWidth > mobileOverflow.viewport + 1) throw new Error(`390px 가로 넘침: ${JSON.stringify(mobileOverflow)}`);
   await page.screenshot({ path: path.join(outputDir, "card-editor-390x844.png") });
 
+  const exportPng = path.join(outputDir, "card-editor-export.png");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const productExportButton = page.locator('[data-edit-helper="true"]').getByRole("button", { name: "내보내기", exact: true });
+  if (await productExportButton.isDisabled()) throw new Error("제품 UI의 내보내기 버튼이 기본 상태에서 비활성입니다.");
+  if (await page.getByText("카드 직접 편집 결과물 만들기는 다음 업데이트에서 열립니다.").count()) {
+    throw new Error("제품 UI에 다음 업데이트 내보내기 차단 문구가 남아 있습니다.");
+  }
+  await productExportButton.click();
+  const exportPanel = page.locator("[data-export-panel]");
+  await exportPanel.waitFor({ state: "visible" });
+  const enqueueResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname === `/api/studio/drafts/${draftId}/exports`);
+  await exportPanel.getByRole("button", { name: "내보내기", exact: true }).click();
+  const enqueueResponse = await enqueueResponsePromise;
+  if (![200, 202].includes(enqueueResponse.status())) throw new Error(`제품 UI 내보내기 접수가 실패했습니다: ${enqueueResponse.status()}`);
+  const processedExportItems = await waitForExportWorker();
+  const firstDownload = exportPanel.getByRole("button", { name: "1장 PNG 다운로드" });
+  await firstDownload.waitFor({ state: "visible", timeout: 120_000 });
+  const downloadPromise = page.waitForEvent("download");
+  await firstDownload.click();
+  const download = await downloadPromise;
+  await download.saveAs(exportPng);
+  await exportPanel.getByRole("button", { name: "내보내기 닫기" }).click();
+  await exportPanel.waitFor({ state: "detached" });
+
   await page.setViewportSize({ width: 1600, height: 1500 });
   await page.getByRole("button", { name: "1장" }).click();
   await page.locator("[data-card-stage]").evaluate((node) => {
@@ -359,18 +477,35 @@ try {
     node.style.zIndex = "2147483647";
     for (const child of node.children) if (!child.hasAttribute("data-card-slide-scene")) child.style.visibility = "hidden";
   });
-  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(async () => {
+    await document.fonts.load('700 64px "Pretendard Variable"', "캔버스 글꼴 확인 ABC 123");
+    await document.fonts.ready;
+    if (!document.fonts.check('700 64px "Pretendard Variable"', "캔버스 글꼴 확인 ABC 123")) throw new Error("화면 Pretendard 글꼴이 준비되지 않았습니다.");
+  });
   const editorPng = path.join(outputDir, "card-editor-screen.png");
-  const exportPng = path.join(outputDir, "card-editor-export.png");
   await page.locator('[data-card-stage] > [data-card-slide-scene]').screenshot({ path: editorPng });
   const finalDeck = await currentDeck();
-  const gallery = await responseJson(await fetch(`${baseUrl}/api/images?tenant_id=${workspaceId}`, { headers: authHeaders() }), "실제 이미지 목록 API");
-  const assetUrls = Object.fromEntries(gallery.map((item) => [item.filename, item.url]));
-  await renderCardSlidePng({ model: cardSlideRenderModel(finalDeck, finalDeck.slides[0].id, assetUrls), outputPath: exportPng });
   const pixelDiff = await comparePng(editorPng, exportPng);
   if (pixelDiff.changedPixelRatio > 0.02) throw new Error(`화면과 PNG 픽셀 차이가 2%를 넘었습니다: ${JSON.stringify(pixelDiff)}`);
 
+  const finalText = finalDeck.slides[0].elements.find((element) => element.id === textId);
+  if (!finalText || finalText.type !== "text") throw new Error("글꼴 비교용 글 요소가 없습니다.");
+  const textRegion = {
+    left: Math.max(0, Math.floor(finalText.x)),
+    top: Math.max(0, Math.floor(finalText.y)),
+    width: Math.min(1080 - Math.max(0, Math.floor(finalText.x)), Math.max(1, Math.ceil(finalText.width))),
+    height: Math.min(1350 - Math.max(0, Math.floor(finalText.y)), Math.max(1, Math.ceil(finalText.height))),
+  };
+  const textPixelDiff = await comparePngRegion(editorPng, exportPng, textRegion);
+  if (textPixelDiff.changedPixelRatio > 0.02) throw new Error(`글자 영역 화면·PNG 차이가 2%를 넘었습니다: ${JSON.stringify(textPixelDiff)}`);
+
   const photoStats = await sharp(photoPath).stats();
+  const photoMetadata = await sharp(photoPath).metadata();
+  if (!photoMetadata.width || !photoMetadata.height) throw new Error("실사진 원본 해상도를 읽지 못했습니다.");
+  const coverScale = Math.max(1080 / photoMetadata.width, 1350 / photoMetadata.height);
+  if (coverScale > 1) throw new Error(`배경 사진을 원본 이상으로 확대합니다: ${photoMetadata.width}x${photoMetadata.height}, scale=${coverScale}`);
+  const exportMetadata = await sharp(exportPng).metadata();
+  if (exportMetadata.width !== 1080 || exportMetadata.height !== 1350) throw new Error(`제품 UI PNG가 1080x1350이 아닙니다: ${exportMetadata.width}x${exportMetadata.height}`);
   const meanDeviation = photoStats.channels.slice(0, 3).reduce((sum, channel) => sum + channel.stdev, 0) / 3;
   if (meanDeviation < 10) throw new Error(`실사진 분산이 너무 낮습니다: ${meanDeviation}`);
   if (consoleErrors.length) throw new Error(`브라우저 console/page 오류 ${consoleErrors.length}건: ${consoleErrors.join(" | ")}`);
@@ -380,26 +515,27 @@ try {
     result: "PASS",
     runtime: { next: baseUrl, database: "PostgreSQL", routesMocked: 0, actualTenant: workspaceId },
     selection: { handles: 8, move: true, shiftRatioResize: true, rotation: rotated.rotation },
-    text: { inline: true, font: "Georgia", size: 70, bold: true, color: "#17324d", align: "center", background: "#fff2a8" },
-    assets: { generatedMedia: true, upload: true, shape: true, realPhotoStdev: meanDeviation },
+    text: { inline: true, contained: textBoxFits, font: "Pretendard Variable", size: 70, bold: true, color: "#17324d", align: "center", background: "#fff2a8" },
+    assets: { generatedMedia: true, upload: true, shape: true, realPhotoStdev: meanDeviation, backgroundPhoto, source: { width: photoMetadata.width, height: photoMetadata.height, coverScale } },
     commands: { duplicate: true, delete: true, layerBackward: true, layerForward: true, undo: true, redo: true, edgeSnapGuide: edgeGuide, centerSnapGuide: centerGuide },
-    pages: { before: pageCountBefore, after: finalDeck.slides.length, reorder: true, bottomStripWithin900: true },
-    layout: { stageAssistantOverlap: overlaps, mobileOverflow },
-    png: { editorPng, exportPng, pixelDiff },
+    pages: { before: pageCountBefore, after: finalDeck.slides.length, reorder: true, bottomStripWithin900: true, thumbnailContents },
+    layout: { stageHeight: stageRect.height, stageAssistantOverlap: overlaps, contextToolbarHeight: textToolbarRect.height, clippedToolbarValues, mobileOverflow },
+    exportUi: { defaultButtonEnabled: true, blockedCopyAbsent: true, enqueueStatus: enqueueResponse.status(), processedExportItems, downloadedThroughUi: true },
+    png: { editorPng, exportPng, width: exportMetadata.width, height: exportMetadata.height, pixelDiff, textPixelDiff },
     screenshots: ["card-editor-1440x900.png", "card-editor-390x844.png"],
     consoleErrors: 0,
     failedRequests: 0,
     persistedRevision: styledDeck.revision,
   });
   fs.writeFileSync(path.join(outputDir, "measurements.json"), JSON.stringify(evidence, null, 2));
-  fs.writeFileSync(path.join(outputDir, "report.md"), `# 카드 편집기 Canva 기본 조작 실구동\n\n- 결과: PASS\n- 경로: 실제 Next.js ${baseUrl}, 실제 PostgreSQL, 실제 로컬 미디어 파일. page.route 0건.\n- 조작: 선택 8핸들, 이동, Shift 비율 고정, 회전, 캔버스 위 글 수정, 글 도구, 생성 미디어, 업로드, 도형, 복제, 삭제, 레이어 양방향, 실행 취소/다시 실행, 중앙·가장자리 스냅, 페이지 추가/복제/이동/삭제를 마우스와 키보드로 실행했다.\n- 배치: 1440x900에서 하단 페이지 줄이 첫 화면 안에 있고 편집 담당 대화창과 캔버스 겹침은 0이다. 390x844 가로 넘침은 0이다.\n- 실사진: ${photoFilename}, RGB 평균 표준편차 ${meanDeviation.toFixed(2)}. 단색 픽스처를 쓰지 않았다.\n- PNG: 화면과 내보내기 차이 ${(pixelDiff.changedPixelRatio * 100).toFixed(4)}%, 기준 2% 이하.\n- 오류: 브라우저 console/page 오류 0, 실패 요청 0.\n- 남은 것: 외부 SNS 실제 게시는 정책에 따라 실행하지 않았다.\n`);
+  fs.writeFileSync(path.join(outputDir, "report.md"), `# 카드 편집기 Canva 기본 조작 R2 실구동\n\nSTAMP: 2026-10-10 KST | model: gpt-5/Codex | agent: code-builder | skill: qa | 근거: v71, 실제 Next.js·PostgreSQL·로컬 미디어·내보내기 워커·제품 UI 다운로드 | 고민: 직접 렌더 우회를 없애고 회장이 누르는 내보내기 버튼부터 받은 PNG까지 같은 경로로 묶었다.\n\n- 결과: PASS\n- 경로: 실제 Next.js ${baseUrl}, 실제 PostgreSQL, 실제 로컬 미디어 파일, 실제 내보내기 워커. page.route 0건.\n- 내보내기: 기능 플래그 미설정 기본 상태에서 제품의 내보내기 버튼이 활성이다. 제품 UI로 접수하고 ${processedExportItems}장을 렌더한 뒤 1장 PNG 다운로드 버튼으로 받은 파일을 비교했다.\n- 글꼴·글 상자: 화면과 내보내기 모두 Pretendard Variable 적재를 확인했다. 글 상자는 줄바꿈·overflow·좌우 안쪽 여백 조건을 통과했고 글자 영역 픽셀 차이는 ${(textPixelDiff.changedPixelRatio * 100).toFixed(4)}%다.\n- 맥락 툴바: 높이 ${textToolbarRect.height.toFixed(1)}px 한 줄, 선택값 실제 글자 폭까지 검사해 잘린 값 0건. 너비·높이·각도는 기본으로 접힌 크기·회전 항목에 있다.\n- 캔버스: 1440x900에서 높이 ${stageRect.height.toFixed(1)}px, 편집 담당 대화창과 겹침 0, 페이지 줄과 작업 버튼이 첫 화면 안에 있다.\n- 페이지: ${finalDeck.slides.length}장 썸네일 모두 실제 장 내용을 렌더하고 2번 썸네일도 비어 있지 않다.\n- 실사진: ${photoFilename} ${photoMetadata.width}x${photoMetadata.height}, cover 배치, 확대 배율 ${coverScale.toFixed(2)}, RGB 평균 표준편차 ${meanDeviation.toFixed(2)}. 단색 픽스처를 쓰지 않았다.\n- PNG: 1080x1350, 화면 전체 차이 ${(pixelDiff.changedPixelRatio * 100).toFixed(4)}%, 글자 영역 차이 ${(textPixelDiff.changedPixelRatio * 100).toFixed(4)}%, 두 기준 모두 2% 이하.\n- 육안 판정: 1440x900 캡처와 내보낸 PNG를 원본 해상도로 직접 열어 확인했다. 글꼴 선택값이 온전히 보이고 첫 글자가 선택 테두리 안에 있으며, 2번 썸네일은 실제 장 내용이고 편집 담당 대화창은 캔버스를 가리지 않는다. 화면과 PNG의 글꼴·줄바꿈·배치가 같다.\n- 오류: 브라우저 console/page 오류 0, 실패 요청 0.\n- 남은 것: 외부 SNS 실제 게시는 정책에 따라 실행하지 않았다.\n\n벤치마크: Canva 공식 도움말의 편집기 내 PNG 다운로드와 품질 선택 흐름, MDN CSS Font Loading API의 document.fonts.ready 완료 조건을 채택했다. 제품 정본에 없는 유료 옵션과 외부 SDK는 도입하지 않았다.\n\nSKILLS_USED: qa, 실제 사용자 경로 브라우저 검증과 증거 수집에 사용\nSKILLS_SKIPPED: review, 푸시·PR 전 단계이며 이번 위임은 R2 구현·실구동 검증 범위라 미호출\nSOURCES/MODEL: gpt-5/Codex | docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html | https://www.canva.com/help/download-or-purchase/ | https://developer.mozilla.org/en-US/docs/Web/API/Document/fonts\nKNOWLEDGE_QUERY: BRAIN OSMU 편집 흐름, v71·회장 결함 보고서, Canva PNG 다운로드, MDN 글꼴 적재 완료 조건을 조회했다.\nHITS_USED: v71의 편집실 셸, Canva의 제품 UI 다운로드 흐름, MDN의 document.fonts.ready를 채택했다.\nHITS_REJECTED: 유료 Polotno와 react-konva 전환은 기존 공용 화면·내보내기 렌더를 이중화하므로 쓰지 않았다.\nCONFLICTS: 없음\n`);
   console.log(JSON.stringify(evidence, null, 2));
 } finally {
   await browser.close();
   await admin`DELETE FROM drafts WHERE tenant_id=${workspaceId}`;
   await admin`DELETE FROM tenant_tokens WHERE tenant_id=${workspaceId}`;
   await admin`DELETE FROM tenants WHERE id=${workspaceId}`;
-  await admin.end();
+  await admin.end({ timeout: 2 });
   const tenantMediaDir = path.resolve(process.cwd(), "../data/tenants", workspaceId);
   fs.rmSync(tenantMediaDir, { recursive: true, force: true });
 }
